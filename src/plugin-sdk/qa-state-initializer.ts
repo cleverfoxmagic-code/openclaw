@@ -7,6 +7,7 @@ export async function initializeQaRuntimeState(): Promise<void> {
     { listAgentIds },
     { openOpenClawStateDatabase },
     { withOpenClawAgentDatabaseAsync },
+    { applyMessageQueueDefaults },
     { applyPluginAutoEnable },
     { migrateLegacyConfigMachineState },
     { initializeFreshDaemonRuntimePinMigration },
@@ -25,6 +26,7 @@ export async function initializeQaRuntimeState(): Promise<void> {
     import("../agents/agent-roster.js"),
     import("../state/openclaw-state-db.js"),
     import("../state/openclaw-agent-db.js"),
+    import("../config/defaults.js"),
     import("../config/plugin-auto-enable.js"),
     import("../infra/state-migrations.config-machine-state.js"),
     import("../infra/state-migrations.daemon-runtime-pins.js"),
@@ -72,7 +74,7 @@ export async function initializeQaRuntimeState(): Promise<void> {
     throw new Error(migration.warnings.join("\n"));
   }
   const config = applyPluginAutoEnable({
-    config: migration.config,
+    config: applyMessageQueueDefaults(migration.config),
     env,
   }).config;
   const credentials = await maybeMigrateModelCatalogCredentials({

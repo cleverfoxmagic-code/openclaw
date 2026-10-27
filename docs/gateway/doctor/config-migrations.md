@@ -70,22 +70,43 @@ The migration also leaves lists absent when the effective account, channel, or
 global-default `groupPolicy` disables groups. Explicit policy overrides still
 apply. Update-time Doctor repair follows the same rules.
 
-## Collaborative steering defaults
+## Collaborative steering default
 
-[Security presets](/gateway/security/presets) own runtime steering defaults. Doctor
-and configuration creation no longer persist a separate steering default: doing
-so would pin an override and prevent a later preset switch from taking effect.
-Ordinary reads and startup also leave the authored configuration unchanged.
+Doctor writes `messages.queue.allowCollaborativeSteering: false` when the setting is
+absent, creating missing parent objects. New configuration files contain the same
+explicit default. Existing `true` and `false` values, including values supplied
+through config includes, stay unchanged.
 
-Existing explicit `messages.queue.allowCollaborativeSteering` values, including
-booleans persisted by earlier versions or supplied through includes, stay
-unchanged. Doctor does not infer whether an older explicit value was a user
-choice. Unset that override to use the selected preset. The same rule applies
-during updates, without an additional default-only config or bookkeeping write.
+The repair uses Doctor's existing backed-up, include-aware config writer. A
+supported, singly owned nested include receives the repair in
+that file. Ambiguous, shared, external, or root-level include layouts retain the
+writer's existing refusal behavior; Doctor reports the affected boundary so the
+operator can edit its owning file explicitly. Repeated repair is idempotent.
 
-With collaboration disabled and quiet fallback selected, messages queue as
-requester-owned turns without a resend instruction. Explicit strict fallback
-remains available. See [Queue steering](/concepts/queue-steering).
+Persisting this default can also update database-backed config bookkeeping.
+The existing [update rollback checks](/cli/update/how-updates-run) still apply:
+unattributed database writes prevent automatic restoration, including writes
+made during Doctor. The updater retains recovery artifacts for manual recovery.
+
+Managed package updates and source updates invoke candidate Doctor and use this
+repair. Older update drivers that request a read-only Doctor phase cannot persist
+it in that phase. Direct package-manager upgrades, manual package replacement, and
+container-image replacement can bypass Doctor entirely. These installations use
+the runtime default immediately; run `openclaw doctor --fix` to persist it.
+Ordinary configuration reads and Gateway startup do not write this setting.
+
+With collaboration disabled, messages still queue quietly as requester-owned turns
+by default. Explicit `collaborativeSteeringFallback: "reject"` remains available.
+See [Queue steering](/concepts/queue-steering) for the opt-in authority tradeoff.
+
+## Removed security presets
+
+The unreleased `security.preset` field has been removed. Configurations containing
+`personal` or `corporate` must remove that field before startup; `openclaw doctor --fix`
+removes it through the existing unknown-key repair and backup flow.
+Doctor does not expand the removed preset. Explicit execution, sandbox, file,
+steering, and messaging settings are preserved; configure those controls directly
+if you relied on preset-derived restrictions.
 
 ## Cloud setup secret migration
 

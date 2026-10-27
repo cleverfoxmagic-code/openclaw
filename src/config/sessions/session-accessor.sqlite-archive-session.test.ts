@@ -57,7 +57,10 @@ import * as reclamationWorker from "./session-accessor.sqlite-reclamation-worker
 import * as sessionWorker from "./session-accessor.sqlite-replacement-worker.js";
 import { replaceTranscriptEvents } from "./session-accessor.sqlite-transcript-write.test-support.js";
 import * as archivePublication from "./session-archive-publication.js";
-import * as coldStorage from "./session-cold-storage.js";
+import {
+  restoreSessionColdTranscript,
+  runSessionColdStorageMaintenance,
+} from "./session-cold-storage.js";
 import {
   createSessionColdStorageFixture,
   maintenanceConfig,
@@ -319,7 +322,7 @@ describe("SQLite transcript archive sessions", () => {
       const exercise = async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         try {
-          await coldStorage.runSessionColdStorageMaintenance({
+          await runSessionColdStorageMaintenance({
             config: maintenanceConfig(fixture.scope.storePath),
           });
           expect(carriers).toHaveLength(1);
@@ -354,14 +357,15 @@ describe("SQLite transcript archive sessions", () => {
               return result;
             },
           );
-          const restored = coldStorage.restoreSessionColdTranscript(fixture.scope);
+          // Read-only probes stream cold archives (#185955); only explicit restoration mutates.
+          const restored = restoreSessionColdTranscript(fixture.scope);
           await entered.promise;
           expect(carriers).toHaveLength(1);
           const exited = once(carrier, "exit");
           finishClose?.();
           finishClose = undefined;
-          await Promise.all([exited, restored]);
-          expect(await loadTranscriptEvents(fixture.scope)).toHaveLength(3);
+          await exited;
+          expect(await restored.then(() => loadTranscriptEvents(fixture.scope))).toHaveLength(3);
           expect(carriers).toHaveLength(2);
           expect(leases()).toEqual(baselineLeases);
           expect(fixture.snapshot()).toEqual(original);

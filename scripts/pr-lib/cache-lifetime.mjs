@@ -99,7 +99,7 @@ function assertLedgerFiles(cache, identity, path, file, fd) {
   ) {
     throw new Error("PR dependency ledger identity changed; retain installations");
   }
-  for (const name of readdirSync(cache).filter((name) => name.startsWith(`${ledgerName}-`))) {
+  for (const name of readdirSync(cache).filter((entry) => entry.startsWith(`${ledgerName}-`))) {
     if (name !== `${ledgerName}-journal`) {
       throw new Error(`Unknown PR dependency ledger auxiliary file: ${name}`);
     }
@@ -121,6 +121,7 @@ function transaction(context, operation, initialize = false) {
     try {
       db.exec("ROLLBACK");
     } catch (rollback) {
+      // oxlint-disable-next-line preserve-caught-error -- Aggregate cause preserves both the operation and rollback failures.
       throw new Error("PR dependency ledger rollback failed; retain installations", {
         cause: new AggregateError([error, rollback]),
       });
@@ -177,7 +178,7 @@ function openLedger(cache, cacheIdentity, create, readOnly) {
             entry_key TEXT NOT NULL REFERENCES installations(key),
             anchor_path TEXT NOT NULL, anchor_dev TEXT NOT NULL, anchor_ino TEXT NOT NULL,
             anchor_uid TEXT NOT NULL, anchor_mode TEXT NOT NULL,
-            PRIMARY KEY (entry_key, anchor_dev, anchor_ino)
+            PRIMARY KEY (entry_key, anchor_path, anchor_dev, anchor_ino)
           ) STRICT;
         `);
           db.prepare("INSERT INTO owner VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 0)").run(
@@ -243,8 +244,10 @@ function installation(context, entry) {
 
 function anchorRows(db, anchor) {
   return db
-    .prepare("SELECT * FROM holds WHERE anchor_dev = ? AND anchor_ino = ? ORDER BY entry_key")
-    .all(String(anchor.dev), String(anchor.ino));
+    .prepare(
+      "SELECT * FROM holds WHERE anchor_path = ? AND anchor_dev = ? AND anchor_ino = ? ORDER BY entry_key",
+    )
+    .all(anchor.path, String(anchor.dev), String(anchor.ino));
 }
 
 function assertHold(row, anchor) {
@@ -273,8 +276,10 @@ function acquire(context, entry, anchor, fresh = false) {
       }
     }
     const existing = context.db
-      .prepare("SELECT * FROM holds WHERE entry_key = ? AND anchor_dev = ? AND anchor_ino = ?")
-      .get(basename(entry), String(anchor.dev), String(anchor.ino));
+      .prepare(
+        "SELECT * FROM holds WHERE entry_key = ? AND anchor_path = ? AND anchor_dev = ? AND anchor_ino = ?",
+      )
+      .get(basename(entry), anchor.path, String(anchor.dev), String(anchor.ino));
     if (existing) {
       assertHold(existing, anchor);
     } else {
@@ -292,6 +297,22 @@ function acquire(context, entry, anchor, fresh = false) {
 }
 
 function assertLedgerOwner(context) {
+  // Earlier PR-format ledgers cannot distinguish a retained path from a later
+  // anchor reusing its inode. Refuse that layout rather than adopting its holds.
+  const expectedHoldKey = ["entry_key", "anchor_path", "anchor_dev", "anchor_ino"];
+  const holdKey = context.db
+    .prepare("PRAGMA table_info(holds)")
+    .all()
+    .filter((column) => column.pk > 0)
+    .toSorted((left, right) => left.pk - right.pk);
+  if (
+    holdKey.length !== expectedHoldKey.length ||
+    holdKey.some(
+      (column, index) => column.pk !== index + 1 || column.name !== expectedHoldKey[index],
+    )
+  ) {
+    throw new Error("PR dependency hold ledger layout differs; retain installations");
+  }
   const owner = context.db.prepare("SELECT * FROM owner WHERE id = 1").get();
   if (
     !owner ||
@@ -354,7 +375,6 @@ function withCacheOwner(cache, operation, initialize, readOnly = false) {
       pause,
       0,
       0,
-      // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- Atomics.wait needs a Number budget from hrtime.bigint().
       Math.max(0, Math.min(10, Number(deadline - process.hrtime.bigint()) / 1_000_000)),
     );
   }
@@ -475,8 +495,10 @@ function assertDependencyTargets(targets, destination) {
       for (const entry of entries) {
         installation(context, entry);
         const hold = context.db
-          .prepare("SELECT * FROM holds WHERE entry_key = ? AND anchor_dev = ? AND anchor_ino = ?")
-          .get(basename(entry), String(anchor.dev), String(anchor.ino));
+          .prepare(
+            "SELECT * FROM holds WHERE entry_key = ? AND anchor_path = ? AND anchor_dev = ? AND anchor_ino = ?",
+          )
+          .get(basename(entry), anchor.path, String(anchor.dev), String(anchor.ino));
         if (!hold) {
           throw new Error("Private cache donor has no matching anchor lifetime hold");
         }
@@ -689,8 +711,10 @@ export function retireAnchorDependencies(anchor, retire) {
             throw new Error("PR dependency installation ledger changed after retirement");
           }
           context.db
-            .prepare("DELETE FROM holds WHERE entry_key = ? AND anchor_dev = ? AND anchor_ino = ?")
-            .run(row.entry_key, row.anchor_dev, row.anchor_ino);
+            .prepare(
+              "DELETE FROM holds WHERE entry_key = ? AND anchor_path = ? AND anchor_dev = ? AND anchor_ino = ?",
+            )
+            .run(row.entry_key, row.anchor_path, row.anchor_dev, row.anchor_ino);
           context.db
             .prepare(`
           UPDATE installations SET settled = 1 WHERE key = ?

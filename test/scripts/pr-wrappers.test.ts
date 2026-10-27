@@ -1572,13 +1572,16 @@ if (output) writeFileSync(1, output);
         `import * as fixtureFs from "node:fs";
 import * as fixturePath from "node:path";
 import { DatabaseSync as FixtureDatabase } from "node:sqlite";
+import { withDependencyCacheLock as fixtureWithCacheLock } from "./cache-lifetime.mjs";
 const fixtureEntry = fixturePath.dirname(process.argv[2]);
 const fixtureLedger = fixturePath.join(fixturePath.dirname(fixtureEntry), "lifetime.sqlite");
 let fixtureHolds = 0;
 if (fixtureFs.existsSync(fixtureLedger)) {
-  const db = new FixtureDatabase(fixtureLedger, { readOnly: true });
-  try { fixtureHolds = db.prepare("SELECT count(*) AS count FROM holds WHERE entry_key = ?").get(fixturePath.basename(fixtureEntry)).count; }
-  finally { db.close(); }
+  fixtureWithCacheLock(fixturePath.dirname(fixtureEntry), () => {
+    const db = new FixtureDatabase(fixtureLedger, { readOnly: true });
+    try { fixtureHolds = db.prepare("SELECT count(*) AS count FROM holds WHERE entry_key = ?").get(fixturePath.basename(fixtureEntry)).count; }
+    finally { db.close(); }
+  });
 }
 fixtureFs.appendFileSync(${JSON.stringify(materializerCalls)}, JSON.stringify({ source: process.argv[2], destination: process.argv[3], holds: fixtureHolds }) + "\\n");
 ${source}`,
@@ -2112,10 +2115,12 @@ closeSync(fd);
 test -z "\${OPENCLAW_PR_ANCHOR_CREATOR_PID:-}\${OPENCLAW_PR_ANCHOR_FD:-}" || return
 if { : <&9; } 2>/dev/null; then return 8; fi
 test "\${OPENCLAW_PR_LOCK_SUPERVISOR_PID:-}" = "$PPID" || return
-node --input-type=module - "$script_parent_dir/../node_modules" <<'EOF_HELD_PROJECTION'
+node --input-type=module - "$script_parent_dir/../node_modules" "$script_parent_dir/pr-lib/cache-lifetime.mjs" <<'EOF_HELD_PROJECTION'
 import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+const { withDependencyCacheLock } = await import(pathToFileURL(process.argv[3]).href);
 const modules = realpathSync(process.argv[2]);
 const require = createRequire(join(modules, "projection-check.cjs"));
 const yaml = require("yaml");
@@ -2123,9 +2128,11 @@ const packagePath = realpathSync(join(modules, "yaml"));
 const entry = dirname(dirname(packagePath));
 const anchor = dirname(modules);
 const { DatabaseSync } = require("node:sqlite");
-const db = new DatabaseSync(join(dirname(entry), "lifetime.sqlite"), { readOnly: true });
-const matchingHolds = db.prepare("SELECT anchor_path FROM holds WHERE entry_key = ? AND anchor_path = ?").all(require("node:path").basename(entry), anchor);
-db.close();
+const matchingHolds = withDependencyCacheLock(dirname(entry), () => {
+  const db = new DatabaseSync(join(dirname(entry), "lifetime.sqlite"), { readOnly: true });
+  try { return db.prepare("SELECT anchor_path FROM holds WHERE entry_key = ? AND anchor_path = ?").all(require("node:path").basename(entry), anchor); }
+  finally { db.close(); }
+});
 console.log("supervised-projection=" + JSON.stringify({ anchor, entry, matchingHolds: matchingHolds.length, usable: yaml.parse("held: true").held }));
 EOF_HELD_PROJECTION
 `,

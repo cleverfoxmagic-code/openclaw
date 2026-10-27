@@ -5,6 +5,7 @@ import {
   closeSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
@@ -468,6 +469,83 @@ describePosix("PR cache anchor lifetime", () => {
     expect(existsSync(f.anchor)).toBe(false);
     expect(readPrCacheState(installation).anchors).toHaveLength(1);
     expect(readPrCacheState(installation).settled).toBe(false);
+  });
+
+  it("separates retained anchor paths sharing an inode and installation", () => {
+    const f = fixture();
+    const installation = entry(f.cache, "a".repeat(64));
+    const target = join(installation, "node_modules/pkg");
+    mkdirSync(target, { recursive: true });
+    const acquire = `withDependencyCacheLock(cache, lock => holdDependencyCache(lock, ${JSON.stringify(installation)}, anchor)); assertDependencyTarget(${JSON.stringify(target)}, anchor.path + "/node_modules");`;
+    expect(child(f, acquire).status).toBe(0);
+    const identity = lstatSync(f.anchor, { bigint: true });
+    const moved = `${f.anchor}-moved`;
+    renameSync(f.anchor, moved);
+    const current = lstatSync(moved, { bigint: true });
+    expect([current.dev, current.ino]).toEqual([identity.dev, identity.ino]);
+    const acquired = child(f, acquire, moved);
+    expect(acquired.status, acquired.stderr).toBe(0);
+    expect(readPrCacheState(installation).anchors.toSorted()).toEqual([f.anchor, moved].toSorted());
+    const retired = child(
+      f,
+      "retireAnchorDependencies(anchor, () => rmSync(anchor.path, { recursive: true }));",
+      moved,
+    );
+    expect(retired.status, retired.stderr).toBe(0);
+    expect(existsSync(moved)).toBe(false);
+    expect(readPrCacheState(installation)).toEqual({
+      registered: true,
+      settled: false,
+      anchors: [f.anchor],
+    });
+    for (let index = 0; index < 5; index++) {
+      entry(f.cache, String(index).repeat(64));
+    }
+    sweep(f.cache);
+    expect(existsSync(installation)).toBe(true);
+  });
+
+  it("refuses and retains an earlier PR-format ledger without rewriting its holds", () => {
+    const f = fixture();
+    const installation = entry(f.cache, "a".repeat(64));
+    expect(
+      child(
+        f,
+        `withDependencyCacheLock(cache, lock => holdDependencyCache(lock, ${JSON.stringify(installation)}, anchor));`,
+      ).status,
+    ).toBe(0);
+    const path = join(f.cache, "lifetime.sqlite");
+    const db = new DatabaseSync(path);
+    try {
+      db.exec(`
+        ALTER TABLE holds RENAME TO prior_holds;
+        CREATE TABLE holds (
+          entry_key TEXT NOT NULL REFERENCES installations(key),
+          anchor_path TEXT NOT NULL, anchor_dev TEXT NOT NULL, anchor_ino TEXT NOT NULL,
+          anchor_uid TEXT NOT NULL, anchor_mode TEXT NOT NULL,
+          PRIMARY KEY (entry_key, anchor_dev, anchor_ino)
+        ) STRICT;
+        INSERT INTO holds SELECT * FROM prior_holds;
+        DROP TABLE prior_holds;
+      `);
+    } finally {
+      db.close();
+    }
+    const before = readFileSync(path);
+    const result = child(
+      f,
+      "retireAnchorDependencies(anchor, () => rmSync(anchor.path, { recursive: true }));",
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("hold ledger layout differs; retain installations");
+    expect(readFileSync(path)).toEqual(before);
+    expect(existsSync(f.anchor)).toBe(true);
+    expect(existsSync(installation)).toBe(true);
+    expect(readPrCacheState(installation)).toEqual({
+      registered: true,
+      settled: false,
+      anchors: [f.anchor],
+    });
   });
 
   it.each(["missing anchor", "missing hold", "replaced entry", "failed retirement"])(

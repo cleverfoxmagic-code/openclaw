@@ -429,10 +429,15 @@ it("resolves runtime aliases and import/require conditions without following dec
   );
 });
 
+const sessionMemoryOwners: string[] = [
+  "src/config/sessions/session-actor-memory.ts",
+  "src/config/sessions/session-actor-memory-owner.ts",
+  "src/config/sessions/session-actor-storage-acquisition.ts",
+];
+
 it.each([
   {
     name: "native session worker transactions",
-    dynamic: false,
     entrypoints: [
       "src/config/sessions/session-actor.worker.ts",
       "src/config/sessions/session-turn.worker.ts",
@@ -442,9 +447,7 @@ it.each([
       "src/gateway/worker-environments/transcript-commit.worker.ts",
     ],
     deferredOwners: [
-      "src/config/sessions/session-actor-memory.ts",
-      "src/config/sessions/session-actor-memory-owner.ts",
-      "src/config/sessions/session-actor-storage-acquisition.ts",
+      ...sessionMemoryOwners,
       "src/config/sessions/goals-operations.ts",
       "src/agents/sessions/session-manager-reload.ts",
       "src/config/sessions/session-accessor.sqlite-transcript-write.ts",
@@ -453,33 +456,22 @@ it.each([
   },
   {
     name: "combined session store topology reads",
-    dynamic: false,
     entrypoints: ["src/config/sessions/combined-store-topology.worker.ts"],
-    deferredOwners: [
-      "src/config/sessions/session-actor-memory.ts",
-      "src/config/sessions/session-actor-memory-owner.ts",
-      "src/config/sessions/session-actor-storage-acquisition.ts",
-    ],
+    deferredOwners: sessionMemoryOwners,
   },
   {
     name: "session actor ownership reads",
     dynamic: true,
     entrypoints: ["src/config/sessions/session-actor-storage-binding.ts"],
-    deferredOwners: [
-      "src/config/sessions/session-actor-memory.ts",
-      "src/config/sessions/session-actor-memory-owner.ts",
-      "src/config/sessions/session-actor-storage-acquisition.ts",
-    ],
+    deferredOwners: sessionMemoryOwners,
   },
   {
     name: "local avatar worker",
     entrypoints: ["src/agents/identity-avatar-file.worker.ts"],
-    dynamic: false,
     deferredOwners: ["src/agents/agent-scope.ts", "src/agents/agent-scope-config.ts"],
   },
   {
     name: "native update authority",
-    dynamic: false,
     entrypoints: [
       "src/cli/update-cli/update-command-executor.ts",
       "src/cli/update-cli/update-command-retained-service.ts",
@@ -494,14 +486,12 @@ it.each([
   },
   {
     name: "migrated finalization",
-    dynamic: false,
     entrypoints: ["src/infra/update-migrated-finalize.worker.ts"],
     deferredOwners: ["src/cli/daemon-cli.ts", "src/cli/daemon-cli/register.ts"],
   },
   {
     name: "shared-state read worker startup",
     entrypoints: ["src/state/openclaw-state-read.worker.ts"],
-    dynamic: false,
     deferredOwners: [
       "src/infra/state-migrations.cron-run-logs.ts",
       "src/cron/run-history-detail.ts",
@@ -510,7 +500,6 @@ it.each([
   {
     name: "shared-state read command handlers",
     entrypoints: ["src/state/openclaw-state-read-handlers.ts"],
-    dynamic: false,
     deferredOwners: ["src/state/openclaw-agent-db.ts"],
   },
   {
@@ -525,13 +514,11 @@ it.each([
   {
     name: "Git worktree inspections",
     entrypoints: ["src/agents/worktrees/git-worktree-operations.runtime.ts"],
-    dynamic: false,
     deferredOwners: ["src/agents/worktrees/snapshot-inventory.ts"],
   },
   {
     name: "persisted model catalog reader",
     entrypoints: ["src/agents/plugin-model-catalog-read.worker.ts"],
-    dynamic: false,
     deferredOwners: [
       "src/state/openclaw-agent-db-readonly.ts",
       "src/state/openclaw-agent-db-borrower.ts",
@@ -544,7 +531,6 @@ it.each([
       "src/config/sessions/session-accessor.sqlite-mutation-worker.runtime.ts",
       "src/config/sessions/session-canonical-validation.ts",
     ],
-    dynamic: false,
     deferredOwners: [
       "src/config/sessions/session-cold-storage-source-guard.worker.ts",
       "src/config/sessions/session-source-predicate.worker.ts",
@@ -556,7 +542,6 @@ it.each([
       "src/config/sessions/session-cold-storage-selection.ts",
       "src/config/sessions/session-cold-storage-prepare.ts",
     ],
-    dynamic: false,
     deferredOwners: [
       "src/state/openclaw-agent-db.ts",
       "src/config/sessions/session-turn.kernel.ts",
@@ -569,7 +554,6 @@ it.each([
       "src/config/sessions/session-history-worker-errors.ts",
       "src/config/sessions/session-cold-storage-read.ts",
     ],
-    dynamic: false,
     deferredOwners: [
       "src/config/sessions/session-cold-storage-state.ts",
       "src/infra/kysely-sync.ts",
@@ -578,7 +562,6 @@ it.each([
   {
     name: "Ollama config metadata",
     entrypoints: ["extensions/ollama/src/defaults.ts", "extensions/ollama/provider-policy-api.ts"],
-    dynamic: false,
     deferredOwners: [
       "src/plugin-sdk/provider-model-shared.ts",
       "src/plugin-sdk/plugin-entry.ts",
@@ -587,7 +570,7 @@ it.each([
   },
 ])("keeps $name independent of deferred owners", ({ entrypoints, deferredOwners, dynamic }) => {
   const closure = collectRuntimeImportClosure(process.cwd(), entrypoints, {
-    includeDynamicImports: dynamic,
+    includeDynamicImports: dynamic ?? false,
   });
   expect(closure.filter((file) => deferredOwners.includes(file))).toEqual([]);
 });

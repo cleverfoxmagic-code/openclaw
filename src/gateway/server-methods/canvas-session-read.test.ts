@@ -200,9 +200,10 @@ it("reads retained widget receipts and waits only for current live presentations
       await withSessionHistoryWorkerDatabase(database, async (reader) => {
         const readCold = () =>
           reader.readColdMetadata({ sessionId: scope.sessionId, env: state.env });
-        expect((await readCold()).archive).toBeDefined();
+        const archive = (await readCold()).archive;
+        expect(archive).toBeDefined();
         expect((await view(bound))[1]).toEqual(first[1]);
-        expect((await readCold()).archive).toBeUndefined();
+        expect((await readCold()).archive).toEqual(archive);
       });
 
       const unbound = await createCanvasDocument({

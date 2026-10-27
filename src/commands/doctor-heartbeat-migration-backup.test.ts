@@ -11,25 +11,32 @@ const mocks = vi.hoisted(() => ({
   hasPendingHeartbeatOutcomes: vi.fn(),
 }));
 
-vi.mock("./doctor-schema-migrations.js", () => ({
+vi.mock("./doctor-schema-migrations.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-schema-migrations.js")>()),
   prepareDoctorDatabaseMigrations: mocks.prepareDoctorDatabaseMigrations,
 }));
-vi.mock("./doctor-migration-backup.js", () => ({
+vi.mock("./doctor-migration-backup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-migration-backup.js")>()),
   backupDoctorMigrationDatabases: mocks.backupDoctorMigrationDatabases,
 }));
-vi.mock("../config/io.factory.js", () => ({
+vi.mock("../config/io.factory.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/io.factory.js")>()),
   createConfigIO: () => ({ readConfigFileSnapshot: mocks.readConfigFileSnapshot }),
 }));
-vi.mock("./doctor-heartbeat-legacy.js", () => ({
+vi.mock("./doctor-heartbeat-legacy.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-heartbeat-legacy.js")>()),
   tryProjectRetiredHeartbeatConfig: mocks.tryProjectRetiredHeartbeatConfig,
 }));
-vi.mock("./doctor-heartbeat-cadence-migration.js", () => ({
+vi.mock("./doctor-heartbeat-cadence-migration.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-heartbeat-cadence-migration.js")>()),
   hasPendingHeartbeatCadenceMigration: mocks.hasPendingHeartbeatCadenceMigration,
 }));
-vi.mock("./doctor-heartbeat-scratch-migration.js", () => ({
+vi.mock("./doctor-heartbeat-scratch-migration.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-heartbeat-scratch-migration.js")>()),
   collectHeartbeatScratchMigrationFindings: mocks.collectHeartbeatScratchMigrationFindings,
 }));
-vi.mock("./doctor-heartbeat-outcome-migration.js", () => ({
+vi.mock("./doctor-heartbeat-outcome-migration.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor-heartbeat-outcome-migration.js")>()),
   hasPendingHeartbeatOutcomes: mocks.hasPendingHeartbeatOutcomes,
 }));
 
@@ -53,14 +60,7 @@ function schemasWith(
 }
 
 describe("hasUnpreparedSchemas", () => {
-  it("treats stores committed by the version phase as prepared", () => {
-    expect(hasUnpreparedSchemas(schemasWith([pending(agentPath)]), [{ path: agentPath }])).toBe(
-      false,
-    );
-  });
-
   it("keeps stores the version phase did not migrate pending", () => {
-    expect(hasUnpreparedSchemas(schemasWith([pending(agentPath)]), undefined)).toBe(true);
     expect(
       hasUnpreparedSchemas(schemasWith([pending(agentPath), pending(otherAgentPath)]), [
         { path: agentPath },

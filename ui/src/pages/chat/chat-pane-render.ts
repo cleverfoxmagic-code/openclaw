@@ -69,6 +69,8 @@ registerChatSessionEnglish();
 const emptyTranscriptItems: [] = [];
 
 export class ChatPaneRuntime extends ChatPaneLayoutRender {
+  private readonly widgetLayout = createChatWidgetLayout();
+
   render(
     readProviderReview?: () => ChatProviderReviewOwner | undefined,
     readRealtimeTalkConversation?: ChatProps["readRealtimeTalkConversation"],
@@ -120,6 +122,9 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       this.context.runtimeConfig.state,
     );
     const currentAgentId = resolveChatAgentId(state);
+    this.composerCapabilities?.synchronize(state, currentAgentId);
+    const sessionScope = scopedAgentParamsForSession(state, state.sessionKey);
+    const widgetTarget = { sessionKey: state.sessionKey, ...sessionScope };
     const catalogKey = parseCatalogSessionKey(state.sessionKey);
     const catalog = catalogKey !== null;
     const selectedAgent = this.context.agents.state.agentsList?.agents.find(
@@ -408,11 +413,6 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       runActive,
       runStatus: state.chatRunStatus,
       startupStatus: activeChatRunStartupStatus(state.chatRunStartup),
-      awaitingActivity:
-        state.chatRunStartup == null &&
-        !(state.chatRunId
-          ? state.knownAgentRunIds.has(state.chatRunId)
-          : selectedSession?.activeRunIds?.some((runId) => state.knownAgentRunIds.has(runId))),
       environmentStartStatus:
         placement?.state === "provisioning" ? placement.startStatus : undefined,
       waitingApproval: state.waitingApprovalStatuses.size > 0,
@@ -547,7 +547,7 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       toolOverrides: selectedSession?.toolOverrides,
       capabilityMenu: catalogKey
         ? undefined
-        : this.composerCapabilities.props(this.context, state, selectedSession, currentAgentId),
+        : this.composerCapabilityMenu(state, selectedSession, currentAgentId),
       ...childRoster,
       sessionHost: {
         assistantAgentId: state.assistantAgentId,
@@ -652,15 +652,12 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       onRewindMessage: selectedSessionArchived ? undefined : sessionActionCallbacks.onRewindMessage,
       agentsList: state.agentsList,
       currentAgentId,
-      fullMessageAgentId: scopedAgentParamsForSession(state, state.sessionKey).agentId,
+      fullMessageAgentId: sessionScope.agentId,
       loadFullAssistantMessage: createSidebarFullMessageLoader(state, this.context.gateway),
       onSessionSelect: (next) => this.onPaneSessionChange?.(this.paneId, next),
       canvasPluginSurfaceUrl: state.canvasPluginSurfaceUrl,
       boardProvider: board.provider,
-      widgetLayout: createChatWidgetLayout(state.chatMessagesBySession, state, {
-        sessionKey: state.sessionKey,
-        ...scopedAgentParamsForSession(state, state.sessionKey),
-      }),
+      widgetLayout: this.widgetLayout(state.chatMessagesBySession, state, widgetTarget),
       onOpenSidebar: state.handleOpenSidebar,
       onRequestOpenImage: state.beginImageOpen,
       onOpenImage: state.handleOpenImage,
@@ -682,11 +679,13 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
     };
     return {
       providerReviewSource: { state, canWrite: canWriteProgressCard && !selectedSessionArchived },
-      capabilityDialogs: catalogKey
-        ? undefined
-        : {
-            read: () => this.composerCapabilities.dialogView(this.context, state, selectedSession),
-          },
+      capabilityDialogs:
+        catalogKey || !this.composerCapabilities
+          ? undefined
+          : {
+              read: () =>
+                this.composerCapabilities!.dialogView(this.context, state, selectedSession),
+            },
       layout: this.renderChatPaneLayout({
         state,
         selectedSession,

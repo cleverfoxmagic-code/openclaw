@@ -44,7 +44,7 @@ import type {
   HumanMentionDirectory,
   HumanMentionMenu,
 } from "./chat-composer-mention-menu-state.ts";
-import type { ChatComposerCapabilityMenuProps } from "./chat-composer-plus-menu.types.ts";
+import type { ChatComposerCapabilityMenuSource } from "./chat-composer-plus-menu.types.ts";
 import type { SkillMenu } from "./chat-composer-skill-menu-state.ts";
 import type { SlashMenu } from "./chat-composer-slash-menu-state.ts";
 import type { ChatPermissionPickerProps } from "./chat-permission-picker.tsx";
@@ -170,7 +170,7 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
   /** The pane resolves aliases and agent ownership; absence must not reuse an unowned row. */
   selectedSession?: GatewaySessionRow;
   toolOverrides?: SessionToolOverrides;
-  capabilityMenu?: ChatComposerCapabilityMenuProps;
+  capabilityMenu?: ChatComposerCapabilityMenuSource;
   providerUsage?: ProviderUsageDisplayProps;
   contextGateway?: ApplicationGateway;
   onOpenContext?: () => void;
@@ -223,6 +223,7 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
   queuedEdit?: ChatQueuedEditProps;
   onClearReply?: () => void;
   goalRecovery?: ChatGoalRecovery;
+  goalResumeBusy?: boolean;
   onGoalAction?: (goalId: string, action: ChatGoalAction) => void;
   onGoalSubmit?: (draft: ChatGoalDraft, submissionAction?: Event) => Promise<boolean>;
   goalDraftMode?: ChatGoalDraftMode | null;

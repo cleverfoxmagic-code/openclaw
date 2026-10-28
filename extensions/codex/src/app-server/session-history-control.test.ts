@@ -6,8 +6,67 @@ import {
   captureCodexSettledTurnFinalizationContext,
   CodexSettledTurnContext,
 } from "./settled-turn-context.js";
+import { assistantMessage } from "./test-support.js";
 
 const { writeSession, writeSqliteSession } = setupSessionHistoryFixtures();
+
+it.each(["file", "sqlite"] as const)(
+  "replays a hidden confirmed notice without its local saved reply from %s",
+  async (storage) => {
+    const text = "Restart recovery stopped. Resume in WebChat.";
+    const saved = "Unconfirmed draft must stay out of model context.";
+    const local = {
+      ...assistantMessage(text, 1),
+      provider: "openclaw",
+      model: "delivery-mirror",
+      content: [
+        { type: "text" as const, text },
+        { type: "text" as const, text: `\nSaved reply (delivery unconfirmed):\n${saved}` },
+      ],
+    };
+    const confirmed = {
+      ...assistantMessage(text, 2),
+      provider: "openclaw",
+      model: "automation-result",
+      display: false,
+      openclawAutomation: {
+        kind: "recovery-notice",
+        noticeId: "notice",
+        localNotice: { entryId: "private-anchor" },
+      },
+    };
+    const { settledMessages } = settledFixture();
+    const messages = [local, confirmed, ...settledMessages];
+    const sqlite = storage === "sqlite" ? await writeSqliteSession() : undefined;
+    if (sqlite) for (const message of messages) await sqlite.append(message);
+    const target = sqlite?.target ?? {
+      sessionFile: await writeSession(
+        messages.map((message, index) => ({
+          type: "message",
+          message,
+          id: `entry-${index}`,
+          parentId: index ? `entry-${index - 1}` : null,
+          timestamp: "2026-06-15T00:00:00.000Z",
+        })),
+      ),
+      sessionId: "codex-session",
+      sessionKey: "codex-session",
+    };
+    const captured = await captureCodexSettledTurnFinalizationContext({
+      ...target,
+      model: "gpt-5.6-luna",
+      settledMessages,
+      mirroredMessages: settledMessages,
+      turnId: "settled",
+    });
+    expect(captured).toBeInstanceOf(CodexSettledTurnContext);
+    const data = JSON.stringify(captured?.data);
+    expect(data.split(text)).toHaveLength(2);
+    expect(data).not.toContain(saved);
+    expect(data).not.toContain("private-anchor");
+    expect(data).not.toContain("localNotice");
+  },
+);
 type CustomMessage = Extract<AgentMessage, { role: "custom" }>;
 function custom(
   customType: string,

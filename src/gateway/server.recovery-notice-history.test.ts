@@ -1,5 +1,8 @@
 import { assert, expect, it, vi } from "vitest";
-import type { SessionsCreateResult } from "../../packages/gateway-protocol/src/index.js";
+import type {
+  SessionsCreateResult,
+  SessionsRecoverResult,
+} from "../../packages/gateway-protocol/src/index.js";
 import { runQaGatewayFixture } from "../../test/helpers/qa-gateway-cleanup.js";
 import { recoverStore } from "../agents/main-session-recovery/main-session-restart-recovery-store.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
@@ -9,6 +12,7 @@ import {
   replaceSessionEntry,
 } from "../config/sessions/session-accessor.js";
 import { readTranscriptEventMessage } from "../config/sessions/session-accessor.sqlite-read.js";
+import { appendAssistantMessageToSessionTranscript } from "../config/sessions/transcript.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import { resolveStateDir } from "../config/state-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -21,6 +25,7 @@ import { deliveryContextFromSession } from "../utils/delivery-context.read.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import { createChatFixture } from "./gateway-chat-fixture.test-support.js";
 import { getGatewayRecoveryRuntime } from "./server-recovery-runtime-context.js";
+import { projectSessionMessagePayload } from "./session-transcript-message.js";
 
 it("records a confirmed restart notice in its agent history once without another display row", async () => {
   let cfg: OpenClawConfig = {};
@@ -88,6 +93,15 @@ it("records a confirmed restart notice in its agent history once without another
       const entry = loadSessionEntry(target);
       assert(entry, "Expected the published secondary session");
       const scope = { ...target, sessionId: created.sessionId };
+      const savedReply = "Unconfirmed private draft from an earlier interrupted reply.";
+      expect(
+        await appendAssistantMessageToSessionTranscript({
+          ...target,
+          expectedSessionId: created.sessionId,
+          text: `Saved reply (delivery unconfirmed):\n${savedReply}`,
+          idempotencyKey: "earlier-saved-reply",
+        }),
+      ).toMatchObject({ ok: true });
       const delivery = { channel: "recovery-chat", to: "synthetic-recipient", accountId: "work" };
       await replaceSessionEntry(target, {
         ...entry,
@@ -126,16 +140,53 @@ it("records a confirmed restart notice in its agent history once without another
           .filter(Boolean);
         const sentText = sendText.mock.calls[0]?.[0].text;
         expect(sentText).toContain("gateway restart");
-        expect(messages[0]).toMatchObject({ content: [{ type: "text", text: sentText }] });
+        expect(messages[1]).toMatchObject({ content: [{ type: "text", text: sentText }] });
         const confirmed = messages.filter((message) => message?.model === "automation-result");
         expect(confirmed).toHaveLength(1);
         expect(confirmed[0]).toMatchObject({ display: false });
-        expect(messages.filter((message) => message?.display !== false)).toHaveLength(1);
+        expect(messages.filter((message) => message?.display !== false)).toHaveLength(2);
+        for (const historyDelta of [false, true]) {
+          expect(
+            projectSessionMessagePayload({ ...target, historyDelta, message: messages[1] }).payload,
+          ).toBeDefined();
+          expect(
+            projectSessionMessagePayload({ ...target, historyDelta, message: confirmed[0] })
+              .payload,
+          ).toBeUndefined();
+        }
         await recover();
         expect(sendText).toHaveBeenCalledOnce();
         expect(
           (await loadTranscriptEvents(scope)).map(readTranscriptEventMessage).filter(Boolean),
         ).toEqual(messages);
+        expect(loadSessionEntry(mainTarget)).toEqual(mainBefore);
+        const visible = await fixture.client.request<{ messages: unknown[] }>("chat.history", {
+          sessionKey: target.sessionKey,
+        });
+        expect(visible.messages).toHaveLength(2);
+        expect(JSON.stringify(visible.messages)).toContain(savedReply);
+        expect(JSON.stringify(visible.messages).split(sentText!)).toHaveLength(2);
+        const resumed = await fixture.client.request<SessionsRecoverResult>("sessions.recover", {
+          agentId: target.agentId,
+          key: target.sessionKey,
+          sessionId: created.sessionId,
+          recoveryCycleId: "exhausted-cycle",
+          mode: "in-place",
+        });
+        assert(resumed.continuation.status === "started");
+        await expect(
+          fixture.client.request("agent.wait", {
+            runId: resumed.continuation.runId,
+            timeoutMs: 30_000,
+          }),
+        ).resolves.toMatchObject({ status: "ok" });
+        expect(fixture.errors).toEqual([]);
+        expect(fixture.requests).toHaveLength(1);
+        const input = JSON.stringify(JSON.parse(fixture.requests[0]!).input);
+        expect(input.split(sentText!)).toHaveLength(2);
+        expect(input).not.toContain(savedReply);
+        expect(input).not.toContain(target.storePath);
+        expect(input).not.toContain("localNotice");
         expect(loadSessionEntry(mainTarget)).toEqual(mainBefore);
       } finally {
         sendNotice.mockRestore();

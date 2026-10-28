@@ -46,7 +46,7 @@ it("shared search/get/health roundtrip uses native publication, provenance and r
   expect((await f.service.record({ id: saved.id }, f.tool)).record!.id).toBe(saved.id);
 });
 
-it("conversation audiences never acquire private scope", async () => {
+it("ungranted conversation audiences never acquire private scope", async () => {
   const f = await memoryFixture(tempDirs);
   await f.save("Private sentinel");
   f.setAudience(f.conversation);
@@ -369,7 +369,7 @@ it("knowledge_recall rejects non-owner authority, unavailable writes and invalid
   f.setAudience(f.conversation);
   await expect(
     f.service.recall({ ...base, set: { summary: "Private context" } }, f.tool),
-  ).rejects.toThrow(/conversation audiences/);
+  ).rejects.toThrow(/owner grant that allows saving/);
   f.setAudience({ kind: "owner-private", agentId: "main" });
   const operator: any = {
     source: "session-action",

@@ -69,6 +69,7 @@ async function fixture(options = {}) {
   };
   return {
     ...host,
+    services,
     service,
     admin,
     owner,
@@ -126,13 +127,16 @@ it("an owner grant lets a group read, save, or both in the agent's private knowl
 it("revoking or narrowing a grant fences work already resolved against it", async () => {
   const f = await fixture();
   await f.save(f.owner, "Owner plan");
-  await f.grant(GROUP, "read-write");
   const stores = new Stores(
     f.api,
     parsePolicy({ operatorRead: true, writesEnabled: true }),
     () => {},
   );
   afterTest(() => stores.stop());
+  await stores.ensure();
+  const setGrant = (access: string) =>
+    stores.registry.call("grant", GROUP, access as "read", stores.grants().revision);
+  await setGrant("read-write");
   const open = async (write: boolean) => {
     const opened = await stores.open(
       featurePrincipal(f.chat(GROUP), true, write, "main", stores.grantFor),
@@ -145,23 +149,20 @@ it("revoking or narrowing a grant fences work already resolved against it", asyn
     return opened.access;
   };
   const [reading, writing] = [await open(false), await open(true)];
-  await f.grant(GROUP, "read");
+  await setGrant("read");
   reading.assertCurrent();
   expect(() => writing.assertCurrent()).toThrow(/read-only/);
-  await f.grant(GROUP, "none");
+  await setGrant("none");
   expect(() => reading.assertCurrent()).toThrow(/authority is required/);
 });
 
-it("grant changes need operator admin and the current revision; a lagged write still revokes", async () => {
-  const f = await fixture({ lag: true });
+it("grant changes need operator admin and the current revision, and persist in the registry", async () => {
+  const f = await fixture();
   await f.save(f.owner, "Owner plan");
-  const reader = operatorContext(f.api, ["operator.write"]);
-  expect((await f.grant(GROUP, "read", reader)).outcome).toBe("forbidden");
+  const writer = operatorContext(f.api, ["operator.write"]);
+  expect((await f.grant(GROUP, "read", writer)).outcome).toBe("forbidden");
   const stale = (await f.service.stores_snapshot({}, f.admin)).grants.revision;
   expect((await f.grant(GROUP, "read")).outcome).toBe("applied");
-  const group = f.chat(GROUP);
-  // config.current() has not published the write yet; Knowledge serves what it wrote.
-  expect(await f.titles(group)).toStrictEqual(["Owner plan"]);
   const conflict = await f.service.stores_grant(
     { expectedRevision: stale, sessionKey: GROUP, access: "none" },
     f.admin,
@@ -170,25 +171,52 @@ it("grant changes need operator admin and the current revision; a lagged write s
   expect(conflict.snapshot!.grants.entries).toStrictEqual([
     { sessionKey: GROUP, agent: "main", access: "read" },
   ]);
-  // Consecutive edits before the host publishes keep the latest write in force.
-  const other = "agent:main:discord:channel:999";
-  expect((await f.grant(other, "read")).outcome).toBe("applied");
-  expect((await f.grant(GROUP, "none")).outcome).toBe("applied");
-  expect((await f.grant(other, "none")).outcome).toBe("applied");
-  expect(await f.titles(group)).toStrictEqual([]);
-  expect(await f.titles(f.chat(other))).toStrictEqual([]);
-  f.publish();
-  expect(await f.titles(group)).toStrictEqual([]);
   expect((await f.grant("agent:ghost:discord:channel:1", "read")).outcome).toBe("invalid");
+  // Grants are Knowledge state, not configuration, and survive a restart.
+  expect(f.host.config.plugins.entries.knowledge.config).not.toHaveProperty("conversationGrants");
+  await Promise.all(f.services.map((s: any) => s.stop()));
+  const restarted = createKnowledgeService(f.api);
+  expect((await restarted.records({}, f.chat(GROUP))).records.map((r) => r.title)).toStrictEqual([
+    "Owner plan",
+  ]);
 });
 
-it("an invalid grants section grants nothing and is reported", async () => {
+it("conversations granted saves can approve automatic recall; read-only and ungranted ones cannot", async () => {
   const f = await fixture();
-  await f.save(f.owner, "Owner plan");
-  f.host.config = structuredClone(f.host.config);
-  f.host.config.plugins.entries.knowledge.config.conversationGrants = { [GROUP]: "admin" };
-  expect(await f.titles(f.chat(GROUP))).toStrictEqual([]);
-  const snapshot = await f.service.stores_snapshot({}, f.admin);
-  expect(snapshot.issues.join(" ")).toMatch(/conversation grants configuration is invalid/);
-  expect(snapshot.grants.entries).toStrictEqual([]);
+  const saved = await f.save(f.owner, "Standing preference");
+  const recall = async (ctx: FeatureInvocationContext) => {
+    const record = (await f.service.record({ id: saved.id }, f.owner)).record!;
+    return f.service.recall(
+      {
+        requestId: randomUUID(),
+        id: record.id,
+        expectedRevision: record.revision,
+        expectedHash: record.hash,
+        set: { summary: "Prefers short answers." },
+      },
+      ctx,
+    );
+  };
+  await expect(recall(f.chat(GROUP))).rejects.toThrow(/owner grant that allows saving/);
+  await f.grant(GROUP, "read");
+  await expect(recall(f.chat(GROUP))).rejects.toThrow(/read-only/);
+  await f.grant(GROUP, "read-write");
+  // Approval is the first call after a restart; the persisted grant still applies.
+  const record = (await f.service.record({ id: saved.id }, f.owner)).record!;
+  await Promise.all(f.services.map((s: any) => s.stop()));
+  const restarted = createKnowledgeService(f.api);
+  const approved = await restarted.recall(
+    {
+      requestId: randomUUID(),
+      id: record.id,
+      expectedRevision: record.revision,
+      expectedHash: record.hash,
+      set: { summary: "Prefers short answers." },
+    },
+    f.chat(GROUP + ":thread:3"),
+  );
+  expect(approved.state).toBe("published");
+  const raw = (await restarted.record({ id: saved.id, view: "raw" }, f.owner)).record!.raw!;
+  expect(raw).toContain("Prefers short answers.");
+  expect(raw).toContain("approved_by: owner-private");
 });

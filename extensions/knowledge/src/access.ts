@@ -1,7 +1,7 @@
 import type { FeatureInvocationContext } from "openclaw/plugin-sdk/feature-plugin";
 import type { MemoryCallerContext } from "./memory-provider-types.js";
 import type { Scope } from "./model.js";
-import type { GrantAccess } from "./stores-config.js";
+import type { GrantAccess } from "./stores-contract.js";
 
 const denied = () =>
   new Error("Knowledge access unavailable: trusted agent/session authority is required.");

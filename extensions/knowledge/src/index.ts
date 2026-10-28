@@ -3,7 +3,7 @@ import { definePluginEntry, buildJsonPluginConfigSchema } from "openclaw/plugin-
 import { getToolPluginMetadata, toolPluginMetadataSymbol } from "openclaw/plugin-sdk/tool-plugin";
 import { contract } from "./contract.js";
 import { createKnowledgeService } from "./service.js";
-import { GRANTS_CONFIG_PATH, PluginConfig, STORES_CONFIG_PATH } from "./stores-config.js";
+import { PluginConfig, STORES_CONFIG_PATH } from "./stores-config.js";
 
 const feature = defineFeaturePlugin({
   contract,
@@ -14,10 +14,10 @@ const feature = defineFeaturePlugin({
 // This host's feature helper has no config option. Compose its shared adapters
 // with the public entry/config and build-metadata SDK, without duplicating them.
 const configSchema = PluginConfig;
-// Membership and grant edits must not reload the plugin: a hot plugin reload
-// admits no new model runs Gateway-wide while it drains. Knowledge applies both
+// Membership edits must not reload the plugin: a hot plugin reload admits no
+// new model runs Gateway-wide while it drains. Knowledge applies membership
 // in-process; the host still publishes the new runtime config for no-op plans.
-const reload = { noopPrefixes: [STORES_CONFIG_PATH.join("."), GRANTS_CONFIG_PATH.join(".")] };
+const reload = { noopPrefixes: [STORES_CONFIG_PATH.join(".")] };
 const entry = definePluginEntry({
   ...feature,
   reload,

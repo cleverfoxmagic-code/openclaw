@@ -43,17 +43,6 @@
         },
         "additionalProperties": false
       },
-      "conversationGrants": {
-        "type": "object",
-        "patternProperties": {
-          "^agent:[a-z][a-z0-9_-]{0,63}:\\S{1,440}$": {
-            "type": "string",
-            "enum": ["read", "write", "read-write"]
-          }
-        },
-        "additionalProperties": false,
-        "maxProperties": 500
-      },
       "maintenance": {
         "type": "object",
         "properties": {

@@ -84,6 +84,8 @@ export async function readMemoryIndex(
   if (!context || !ctx.agentId) {
     return "";
   }
+  // Grants live in the registry; the first turn after a restart waits for it.
+  await stores.ensure();
   const principal = memoryPrincipal(context, ctx.agentId, false, "default", stores.grantFor);
   // An ungranted conversation gets no index. A grant made or revoked mid-session
   // changes the prompt on the next turn: the owner's change is the invalidation.

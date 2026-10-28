@@ -78,51 +78,36 @@ The same page also lists **Conversation access** for the viewed agent; see
 
 By default, a group or channel conversation reads and saves only its own
 conversation partition. An owner can grant one conversation access to its
-agent's private partition:
+agent's private partition from **Settings → Stores & sharing → Conversation
+access** (requires `operator.admin`, and the agent within the operator's role):
 
-```json5
-{
-  plugins: {
-    entries: {
-      knowledge: {
-        config: {
-          conversationGrants: {
-            "agent:main:discord:channel:123456789": "read",
-            "agent:main:telegram:group:-1001234567890": "read-write",
-          },
-        },
-      },
-    },
-  },
-}
-```
+- **Can read** reads the private partition and cannot save. Saves fail with an
+  error, and save guidance is left out of the conversation's prompt.
+- **Can save only** saves to the private partition. Reads stay in the
+  conversation's own partition.
+- **Can read and save** reads and saves the private partition, like an
+  owner-direct turn.
 
-- Keys are conversation session keys. The key names the agent, and the grant
-  covers that agent's effective store.
-- `read` reads the private partition and cannot save. Saves fail with an error
-  and save guidance is left out of the conversation's prompt.
-- `write` saves to the private partition. Reads stay in the conversation's own
-  partition.
-- `read-write` reads and saves the private partition, like an owner-direct turn.
+Grants are keyed by conversation session key:
+
 - Thread, topic, and other sessions whose key extends a granted key with `:`
   inherit its grant. The most specific grant wins. Spawned children already
   share their root conversation's audience.
-- Read grants also include the [Knowledge index](/plugins/knowledge/memory-provider#knowledge-index)
-  and automatic recall candidates.
+- Read grants also include the
+  [Knowledge index](/plugins/knowledge/memory-provider#knowledge-index) and
+  automatic recall candidates.
+- Grants that allow saving also allow approving automatic recall with
+  `knowledge_recall`.
 - Saves from a granted conversation are recorded in history with the writing
   agent, like any other save.
-- Recall approval (`knowledge_recall`) still requires the owner-private audience.
-- Grant edits apply in place without reloading the plugin. A revoked or
-  narrowed grant fails in-flight work at its next authority check and returns
-  the conversation to its own partition.
-- An invalid `conversationGrants` section grants nothing and is reported in
-  settings.
-
-In **Settings → Stores & sharing**, operators with `operator.admin` can grant,
-change, or remove access for the viewed agent's group and channel
-conversations. Grants that match no known session are marked **No known
-conversation**. Knowledge decides access from the host-minted audience's session
-key, never from session rows; the page lists sessions only to label them.
+- Grants are Knowledge state kept in `registry.sqlite`, not configuration.
+  A change applies immediately without a reload. A revoked or narrowed grant
+  fails in-flight work at its next authority check and returns the
+  conversation to its own partition.
+- The page lists the viewed agent's group and channel conversations to choose
+  from. Grants that match no known session are marked **No known
+  conversation**. Knowledge decides access from the host-minted audience's
+  session key, never from session rows.
 
 Removing access stops future reads and saves. It cannot remove what the
 conversation already retrieved.
@@ -134,7 +119,7 @@ default, or `$OPENCLAW_STATE_DIR`):
 
 ```text
 <state dir>/knowledge/
-  registry.sqlite             # store identities, bindings, assignment journal, maintenance schedule
+  registry.sqlite             # store identities, bindings, assignment journal, conversation grants, maintenance schedule
   registry.id                 # sentinel: a missing or emptied registry needs recovery
   stores/<vaultId>/
     state.sqlite              # journal, history, search index, Git queue, Recent projection
@@ -212,7 +197,7 @@ keeps each revision's author.
 | Operator changing assignments or grants            | `operator.admin`, and the grant's agent within the caller's role                                                                                                    | Store membership and conversation grants only; never knowledge edits                          |
 | Agent, owner-private audience                      | Host-minted `owner-private` memory audience and current invocation guard                                                                                            | Private partition of that agent's store                                                       |
 | Agent, conversation audience                       | Host-minted `conversation` memory audience with its session key and UUID, and invocation guard                                                                      | That session's conversation partition in the agent's store                                    |
-| Agent, conversation audience with an owner grant   | The conversation audience above, and a `conversationGrants` entry covering its session key                                                                          | Private partition of the agent's store for the granted reads or saves; otherwise as above     |
+| Agent, conversation audience with an owner grant   | The conversation audience above, and an owner grant covering its session key                                                                                        | Private partition of the agent's store for the granted reads or saves; otherwise as above     |
 | Spawned child                                      | Root audience validated and delegated by the host                                                                                                                   | Same partition as the originating root                                                        |
 | Missing or stale audience, sandboxed provider call | Insufficient authority                                                                                                                                              | Denied                                                                                        |
 
@@ -227,8 +212,8 @@ metadata, or reconstruct spawn lineage. It matches owner grants against the
 audience's session key and re-checks the audience and grants before and after
 asynchronous work.
 
-Agent writes use the same scope mapping as reads, except that a `write` grant
-sends saves to the private partition and a `read` grant refuses them. Operator
+Agent writes use the same scope mapping as reads, except that a save-only grant
+sends saves to the private partition and a read-only grant refuses them. Operator
 read access cannot save. Cross-conversation recall, background host access, and operator browsing
 of conversation partitions are not exposed.
 

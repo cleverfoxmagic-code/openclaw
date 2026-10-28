@@ -9,13 +9,12 @@ import {
 import { RegistryUnavailable } from "./registry-client.js";
 import { bindingState, type RegistrySnapshot } from "./store-registry.js";
 import {
-  GRANTS_CONFIG_PATH,
   STORES_CONFIG_PATH,
   agentIdPattern,
   canonicalJson,
   effectiveBinding,
+  grantsRevision,
   parseMembership,
-  readGrantsSection,
   readStoresSection,
   storesRevision,
   type ConversationGrants,
@@ -162,8 +161,7 @@ export function createStoreOperations(stores: Stores) {
         revision: grants.revision,
         entries: Object.entries(grants.section)
           .map(([sessionKey, access]) => ({ sessionKey, agent: grantAgent(sessionKey), access }))
-          .filter((entry) => client?.allowsAgent?.(entry.agent) ?? true)
-          .slice(0, 500),
+          .filter((entry) => client?.allowsAgent?.(entry.agent) ?? true),
       },
       ...(stores.defaultAgent() ? { defaultAgent: stores.defaultAgent() } : {}),
       agents: agents.map((id) => {
@@ -195,11 +193,7 @@ export function createStoreOperations(stores: Stores) {
                   ? "This OpenClaw version can't save Knowledge settings."
                   : "Changing store assignments requires operator admin access.",
           }),
-      issues: [
-        ...(failure ? [failure] : []),
-        ...membership.issues,
-        ...(grants.issue ? [grants.issue] : []),
-      ].slice(0, 50),
+      issues: [...(failure ? [failure] : []), ...membership.issues].slice(0, 50),
     };
   }
   // Private-partition counts for running stores, read through their lanes
@@ -471,11 +465,12 @@ export function createStoreOperations(stores: Stores) {
     return { outcome, message, snapshot: await snapshot(context) };
   }
 
-  /** Owner direction (spec decision): an operator admin grants, changes or
-   * revokes one conversation's access to its agent's private partition. No
-   * journal or cutover: a grant never moves a physical store, the config write
-   * is idempotent, and every in-flight principal re-resolves grants at its next
-   * live check, so a revocation fences work that has not yet published. */
+  /** Owner direction: an operator admin grants, changes or revokes one
+   * conversation's access to its agent's private partition. Grants are
+   * Knowledge state in the registry, not configuration. No journal or cutover:
+   * a grant never moves a physical store, the registry write is one
+   * compare-and-set, and every in-flight principal re-resolves grants at its
+   * next live check, so a revocation fences work that has not yet published. */
   async function grant(
     input: GrantChangeInput,
     context: FeatureInvocationContext,
@@ -488,12 +483,6 @@ export function createStoreOperations(stores: Stores) {
           "Changing conversation access requires operator admin access. Nothing was changed.",
       };
     }
-    if (!writable()) {
-      return {
-        outcome: "forbidden",
-        message: "This OpenClaw version can't save Knowledge settings. Nothing was changed.",
-      };
-    }
     const agent = grantAgent(input.sessionKey);
     const client = context.source === "session-action" ? context.action.client : undefined;
     if (client?.allowsAgent && !client.allowsAgent(agent)) {
@@ -502,20 +491,30 @@ export function createStoreOperations(stores: Stores) {
         message: `Your operator role does not include agent "${agent}". Nothing was changed.`,
       };
     }
+    await stores.ensure();
+    const conflict = async (): Promise<StoresChangeOutput> => ({
+      outcome: "conflict",
+      message:
+        "Conversation access changed since you opened it. Review the current access and save again.",
+      snapshot: await snapshot(context),
+    });
     const current = stores.grants();
-    if (current.issue) {
-      return { outcome: "invalid", message: `${current.issue} Nothing was changed.` };
-    }
     if (current.revision !== input.expectedRevision) {
-      return {
-        outcome: "conflict",
-        message:
-          "Conversation access changed since you opened it. Review the current access and save again.",
-        snapshot: await snapshot(context),
-      };
+      return conflict();
     }
     if (input.access !== "none" && !stores.agents().includes(agent)) {
       return { outcome: "invalid", message: "Unknown agent. Nothing was changed." };
+    }
+    // The settings snapshot lists at most MAX_GRANTS; refuse more rather than hide them.
+    if (
+      input.access !== "none" &&
+      !Object.hasOwn(current.section, input.sessionKey) &&
+      Object.keys(current.section).length >= MAX_GRANTS
+    ) {
+      return {
+        outcome: "invalid",
+        message: `At most ${MAX_GRANTS} conversations can have access; remove one first. Nothing was changed.`,
+      };
     }
     const next: ConversationGrants = { ...current.section };
     if (input.access === "none") {
@@ -523,35 +522,12 @@ export function createStoreOperations(stores: Stores) {
     } else {
       next[input.sessionKey] = input.access;
     }
-    try {
-      await api.runtime.config.mutateConfigFile({
-        afterWrite: { mode: "auto" },
-        writeOptions: { assertCurrent: () => assertCallerCurrent(context) },
-        mutate(draft) {
-          // Compare only the grants section; unrelated edits never conflict.
-          if (storesRevision(readGrantsSection(draft)) !== input.expectedRevision) {
-            throw new ConfigConflict();
-          }
-          writeSection(draft, GRANTS_CONFIG_PATH, Object.keys(next).length ? next : undefined);
-        },
-      });
-    } catch (e) {
-      if (e instanceof ConfigConflict) {
-        return {
-          outcome: "conflict",
-          message:
-            "Conversation access changed while saving. Nothing was changed; review and save again.",
-          snapshot: await snapshot(context),
-        };
-      }
-      // SAFETY: config writes throw only Error objects.
-      return {
-        outcome: "unknown",
-        message: `Saving conversation access failed: ${(e as Error).message} Review it before trying again.`,
-        snapshot: await snapshot(context),
-      };
+    // The operator may have disconnected or lost access while this waited.
+    assertCallerCurrent(context);
+    await stores.registry.call("grant", input.sessionKey, input.access, input.expectedRevision);
+    if (stores.grants().revision !== grantsRevision(next)) {
+      return conflict();
     }
-    stores.expectGrantsLag(input.expectedRevision, next);
     return {
       outcome: "applied",
       message: input.access === "none" ? "Access removed." : "Access saved.",
@@ -594,26 +570,16 @@ export function createStoreOperations(stores: Stores) {
 }
 
 function writeStoresSection(draft: Record<string, unknown>, section: StoresSection) {
-  writeSection(draft, STORES_CONFIG_PATH, section);
-}
-// Set one section of the plugin config; undefined removes it.
-function writeSection(
-  draft: Record<string, unknown>,
-  path: readonly string[],
-  section: object | undefined,
-) {
   let node = draft;
-  for (const key of path.slice(0, -1)) {
+  for (const key of STORES_CONFIG_PATH.slice(0, -1)) {
     const child = node[key];
     // SAFETY: the node is an existing non-null config object (checked) or a fresh {}.
     node = (node[key] = child && typeof child === "object" ? child : {}) as Record<string, unknown>;
   }
-  if (section === undefined) {
-    delete node[path.at(-1)!];
-  } else {
-    node[path.at(-1)!] = section;
-  }
+  node[STORES_CONFIG_PATH.at(-1)!] = section;
 }
+// Matches the snapshot schema's grant entry bound.
+const MAX_GRANTS = 500;
 // The agent a grant's session key belongs to (the key pattern guarantees the shape).
 const grantAgent = (sessionKey: string) => sessionKey.split(":", 2)[1]!;
 // Collision-safe key from a display name; keys never come from the browser.

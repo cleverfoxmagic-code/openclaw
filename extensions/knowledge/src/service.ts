@@ -368,19 +368,22 @@ export function createKnowledgeService(
       withdraw: agentChange("withdraw"),
       merge: agentChange("merge"),
       unmerge: agentChange("unmerge"),
-      recall: (input, context) => {
+      recall: async (input, context) => {
         if (context.source !== "tool") {
-          return Promise.reject(
-            new Error(
-              "Automatic recall approval is available only through an owner-private agent tool call; browser and operator actions are not allowed.",
-            ),
+          throw new Error(
+            "Automatic recall approval is available only through an agent tool call; browser and operator actions are not allowed.",
           );
         }
-        if (context.tool.memoryAudience?.kind !== "owner-private") {
-          return Promise.reject(
-            new Error(
-              "Automatic recall approval requires the owner's private memory audience; conversation audiences are not allowed.",
-            ),
+        // The owner's own conversations approve recall, and so do conversations
+        // the owner let save to private knowledge; a read-only grant refuses
+        // below like any other save. Grants load with the registry.
+        await stores.ensure();
+        if (
+          context.tool.memoryAudience?.kind !== "owner-private" &&
+          !toolGrant(context, stores.grantFor)
+        ) {
+          throw new Error(
+            "Automatic recall approval requires the owner's private memory audience or an owner grant that allows saving to private knowledge.",
           );
         }
         return use(context, true, (runtime, access) =>

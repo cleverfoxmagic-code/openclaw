@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { memoryIndexCutoff, readMemoryIndex } from "./memory-index-hook.js";
 import { memoryFixture } from "./memory-provider.test-support.js";
 import type { Stores } from "./stores.js";
-import { useTestTempDirs } from "./test-support.js";
+import { operatorContext, useTestTempDirs } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
 
@@ -62,12 +62,16 @@ it("pins the index per physical store, so a binding moved to a fresh store rende
     },
     client: { call: async () => ({ text: `index of ${vaultId}` }) },
   };
-  // Mirrors the Stores member the hook uses: the binding stays, the physical store changes.
-  const stores = {
+  // Mirrors the Stores members the hook uses: the binding stays, the physical store changes.
+  const stub = {
+    async ensure() {},
+    grantFor: () => undefined,
     async open(_principal: unknown, _options: { provision: boolean }): Promise<unknown> {
       return { kind: "ready", binding: "agent:main", runtime, access: { assertCurrent() {} } };
     },
   };
+  // SAFETY: readMemoryIndex calls only the members stubbed above.
+  const stores = stub as unknown as Stores;
   const ctx = {
     agentId: "main",
     sessionKey: `agent:main:pin-${randomUUID()}`,
@@ -76,9 +80,9 @@ it("pins the index per physical store, so a binding moved to a fresh store rende
     memoryAudience: { kind: "owner-private" as const, agentId: "main" },
     assertMemoryAudienceCurrent() {},
   };
-  expect(await readMemoryIndex(stores as Stores, ctx, 1)).toBe("index of vault-shared");
+  expect(await readMemoryIndex(stores, ctx, 1)).toBe("index of vault-shared");
   vaultId = "vault-own";
-  expect(await readMemoryIndex(stores as Stores, ctx, 1)).toBe("index of vault-own");
+  expect(await readMemoryIndex(stores, ctx, 1)).toBe("index of vault-own");
 });
 
 it("omits the index for conversation, missing and sandboxed audiences and revoked callers", async () => {
@@ -100,17 +104,18 @@ it("injects the index into conversations an owner granted read access, threads i
   const hook = f.hooks.before_prompt_build;
   const event = { prompt: "hi", messages: [] };
   const thread = { ...f.conversation, sessionKey: `${f.conversation.sessionKey}:thread:7` };
-  // The fixture host's config is live and mutable; the SDK types it read-only.
-  const config = f.api.runtime.config.current().plugins!.entries!.knowledge!.config as Record<
-    string,
-    unknown
-  >;
+  const admin = operatorContext(f.api, ["operator.admin"]);
   for (const [access, injected] of [
     ["read", true],
     ["read-write", true],
     ["write", false],
   ] as const) {
-    config.conversationGrants = { [f.conversation.sessionKey]: access };
+    const { grants } = await f.service.stores_snapshot({}, admin);
+    const changed = await f.service.stores_grant(
+      { expectedRevision: grants.revision, sessionKey: f.conversation.sessionKey, access },
+      admin,
+    );
+    expect(changed.outcome).toBe("applied");
     const result = await hook(event, hookContext(f, { memoryAudience: thread }));
     expect(result?.appendSystemContext?.includes("Private page title") ?? false).toBe(injected);
   }

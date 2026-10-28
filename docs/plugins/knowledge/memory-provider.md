@@ -145,12 +145,13 @@ context.
 - `knowledge_recall` sets or clears a `recall` block on one exact active record:
   `summary` (1–500 characters, required), up to 20 `triggers`, `importance`
   (1–10), and up to 20 host `projects` keys.
-- It requires writes enabled and a current owner-private audience. Conversation
+- It requires writes enabled and a current owner-private audience, or a
+  conversation audience whose owner grant allows saving. Other conversation
   audiences, operators, and the browser cannot approve recall.
 - Claims with `assertion_origin` of `source` or `agent_inference` cannot be
   approved, because external or inferred text is not owner-approved context.
-- The service writes `approved_by: owner-private` and `approved_at`; callers
-  cannot set them.
+- The service writes `approved_by: owner-private` and `approved_at`, including
+  for approvals made under an owner grant; callers cannot set them.
 - Corrections do not inherit approval. Approve the replacement again.
 
 Candidates are available only to an owner-private audience or a conversation an

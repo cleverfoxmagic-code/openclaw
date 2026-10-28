@@ -129,8 +129,8 @@ export async function resolveAgentRuntimeConfig(
       () => import("../secrets/runtime.js"),
       { config: cfg },
     );
-    const hasClawToolPolicies = collectTemplateToolPolicyCandidates(cfg).length > 0;
-    const [snapshot, provenance, clawToolPolicyRuntime] = await Promise.all([
+    const hasTemplateToolPolicies = collectTemplateToolPolicyCandidates(cfg).length > 0;
+    const [snapshot, provenance, templateToolPolicyRuntime] = await Promise.all([
       measureAgentStartup(
         "secrets-snapshot",
         () =>
@@ -142,18 +142,18 @@ export async function resolveAgentRuntimeConfig(
           }),
         { config: cfg },
       ),
-      hasClawToolPolicies
+      hasTemplateToolPolicies
         ? import("../templates/provenance-runtime-read.js").then(
             ({ prepareTemplateInstallSchemaVersions }) =>
               prepareTemplateInstallSchemaVersions({ artifactPreservingReadOnly: false }),
           )
         : undefined,
-      hasClawToolPolicies ? import("../templates/tool-policy-runtime.js") : undefined,
+      hasTemplateToolPolicies ? import("../templates/tool-policy-runtime.js") : undefined,
     ]);
     provenance?.publish();
     secretsRuntime.activateSecretsRuntimeSnapshot(snapshot);
     // Activation publishes a clone; this caller retains the captured config.
-    clawToolPolicyRuntime?.prepareCapturedTemplateToolPolicyConsent(cfg, {});
+    templateToolPolicyRuntime?.prepareCapturedTemplateToolPolicyConsent(cfg, {});
   }
   return cfg;
 }

@@ -287,7 +287,7 @@ function routeTarget(
   const selectors: Partial<Record<ProbeRoute, string>> = {
     roster: 'openclaw-sidebar-agent-roster a[data-agent-id="main"]',
     templates:
-      "[data-templates-featured] [data-templates-entry] button.agents-home__claw-card-link:not(:disabled)",
+      "[data-templates-featured] [data-templates-entry] button.agents-home__template-card-link:not(:disabled)",
     worktrees:
       'openclaw-worktrees-page button[aria-label="Delete: synthetic-route-worktree"]:not(:disabled)',
     systems: ".systems-desktop .desktop-surface canvas",

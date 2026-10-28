@@ -32,7 +32,6 @@ import {
 } from "./cron.js";
 import { digestTemplateValue } from "./digest.js";
 import {
-  TemplateMcpInstallError,
   installTemplateMcpServersStateless,
   rollbackStatelessTemplateMcpServers,
   type PersistedTemplateMcpServerRef,
@@ -205,7 +204,7 @@ export async function stageTemplateAddHostRequirementsStateless(
   let configCommitAttempted = false;
   let workspaceFiles: PersistedTemplateWorkspaceFile[] = [];
   let packages: PersistedTemplatePackageRef[] = [];
-  let mcpServers: PersistedTemplateMcpServerRef[] = [];
+  const mcpServers: PersistedTemplateMcpServerRef[] = [];
   let cronJobs: PersistedTemplateCronRef[] = [];
   let continued = false;
   const result = (
@@ -395,7 +394,7 @@ export async function stageTemplateAddHostRequirementsStateless(
       if (workspacePlan.actions.some((action) => action.kind === "package")) {
         packages = [...packages, ...(await installTemplatePackages(workspacePlan, stageOptions()))];
       }
-      mcpServers = await installTemplateMcpServersStateless(plan, stageOptions());
+      await installTemplateMcpServersStateless(plan, { ...stageOptions(), refs: mcpServers });
       workspaceBeforeExposure = await workspaceIdentity(workspace);
       const deletion = await readAgentDeletionJournalAsync(plan.agent.finalId);
       if (deletion && !deletion.cleanupCompleted) {
@@ -505,9 +504,6 @@ export async function stageTemplateAddHostRequirementsStateless(
       }
       if (error instanceof TemplatePackageInstallError) {
         packages = [...packages, ...error.installedPackages];
-      }
-      if (error instanceof TemplateMcpInstallError) {
-        mcpServers = error.mcpServers;
       }
       return {
         kind: "partial",

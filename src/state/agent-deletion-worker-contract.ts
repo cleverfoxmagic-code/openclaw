@@ -5,7 +5,7 @@ import type { OpenClawStateLeaseIdentity } from "./openclaw-state-lease.types.js
 export type AgentDeletionWorkerPredicate = {
   agentId: string;
   operationId: string;
-  expectedClawInstall?: PersistedTemplateInstall | null;
+  expectedTemplateInstall?: PersistedTemplateInstall | null;
 };
 
 export type AgentDeletionWorkerGuard = {

@@ -409,14 +409,14 @@ export function resolveEffectiveToolPolicy(params: {
   );
   const explicitProfileAlsoAllow = agentTools?.alsoAllow ?? globalTools?.alsoAllow;
   const agentPolicy = pickSandboxToolPolicy(agentTools);
-  const clawToolPolicyConsent = resolveTemplateToolPolicyConsent({
+  const templateToolPolicyConsent = resolveTemplateToolPolicyConsent({
     agentTools,
     agentId,
     profile,
     ownsProfile: profileSource === "agent",
     hasAgentAllowlist: (agentPolicy?.allow?.length ?? 0) > 0,
   });
-  if (clawToolPolicyConsent.frozen) {
+  if (templateToolPolicyConsent.frozen) {
     markFrozenTemplateToolAllowPolicy(agentPolicy);
   }
 

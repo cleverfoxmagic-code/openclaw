@@ -75,7 +75,7 @@ const selectedScenes = [
   .map((scene) =>
     scene.id === "route-templates"
       ? Object.assign({}, scene, {
-          ready: ".agents-home__claw-empty",
+          ready: ".agents-home__template-empty",
           scenario: {
             featureMethods: [...baseScenario.featureMethods!, "templates.catalog.search"],
             methodResponses: {

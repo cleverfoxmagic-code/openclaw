@@ -13,16 +13,6 @@ import type { TemplateAddPlan, TemplateMcpServer } from "./types.js";
 
 export type { PersistedTemplateMcpServerRef } from "./mcp-records.js";
 
-export class TemplateMcpInstallError extends Error {
-  constructor(
-    message: string,
-    readonly mcpServers: PersistedTemplateMcpServerRef[],
-  ) {
-    super(message);
-    this.name = "TemplateMcpInstallError";
-  }
-}
-
 function mcpServerFromActionDetails(
   details: Record<string, unknown>,
 ): TemplateMcpServer | undefined {
@@ -34,22 +24,21 @@ export function digestTemplateMcpServer(server: Record<string, unknown>): string
   return digestTemplateValue(canonicalizeConfiguredMcpServer(server));
 }
 
-/** A rejected write may still have committed; claim it only when the stored config matches. */
-async function isTemplateMcpServerCommitted(name: string, configDigest: string): Promise<boolean> {
-  const listed = await listConfiguredMcpServers().catch(() => null);
-  const current = listed?.ok ? listed.mcpServers[name] : undefined;
-  return current !== undefined && digestTemplateMcpServer(current) === configDigest;
-}
-
-/** Add a shared MCP requirement without creating a Template ownership record. */
+/**
+ * Add a shared MCP requirement without creating a Template ownership record.
+ * Each ref is recorded in the caller's `refs` before its write, because a write
+ * that throws may still have committed. Rollback re-reads the config and drops
+ * refs with no matching entry.
+ */
 export async function installTemplateMcpServersStateless(
-  plan: TemplateAddPlan,
+  plan: Pick<TemplateAddPlan, "actions"> & { agent: Pick<TemplateAddPlan["agent"], "finalId"> },
   options: TemplateMutationStateOptions & {
+    refs: PersistedTemplateMcpServerRef[];
     assertForwardCurrent?: () => void;
     nowMs?: number;
-  } = {},
-): Promise<PersistedTemplateMcpServerRef[]> {
-  const refs: PersistedTemplateMcpServerRef[] = [];
+  },
+): Promise<void> {
+  const { refs } = options;
   for (const action of plan.actions.filter((candidate) => candidate.kind === "mcpServer")) {
     await withMcpLifecycleLease(action.id, options, async (lease) => {
       const assertCurrent = () => {
@@ -59,22 +48,18 @@ export async function installTemplateMcpServersStateless(
       };
       const server = action.details ? mcpServerFromActionDetails(action.details) : undefined;
       if (!server) {
-        throw new TemplateMcpInstallError(
-          `MCP server action ${JSON.stringify(action.id)} is invalid.`,
-          refs,
-        );
+        throw new Error(`MCP server action ${JSON.stringify(action.id)} is invalid.`);
       }
       const listed = await listConfiguredMcpServers();
       assertCurrent();
       if (!listed.ok) {
-        throw new TemplateMcpInstallError(listed.error, refs);
+        throw new Error(listed.error);
       }
       const configured = listed.mcpServers[action.id];
       const configDigest = digestTemplateMcpServer(server);
       if (configured && digestTemplateMcpServer(configured) !== configDigest) {
-        throw new TemplateMcpInstallError(
+        throw new Error(
           `MCP server ${JSON.stringify(action.id)} already exists with different configuration.`,
-          refs,
         );
       }
       const nowMs = options.nowMs ?? Date.now();
@@ -90,46 +75,29 @@ export async function installTemplateMcpServersStateless(
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
       };
+      refs.push(ref);
       if (!configured) {
-        try {
-          const result = await setConfiguredMcpServer({
-            name: action.id,
-            server,
-            createOnly: true,
-            skipLifecycleLease: true,
-            assertCurrent,
-            assertCurrentAsync: async () => {
-              await options.prepareEffect?.();
-              await lease.assertOwned();
-              assertCurrent();
-            },
-          });
-          if (!result.ok) {
-            throw new TemplateMcpInstallError(result.error, refs);
-          }
-          refs.push(ref);
-          assertCurrent();
-        } catch (error) {
-          if (error instanceof TemplateMcpInstallError) {
-            throw error;
-          }
-          // The config write can commit before a later step fails (post-commit assertion, OAuth
-          // cleanup, or a lost acknowledgement); claim the entry so the caller can roll it back.
-          if (
-            !refs.includes(ref) &&
-            (await isTemplateMcpServerCommitted(action.id, configDigest))
-          ) {
-            refs.push(ref);
-          }
-          throw new TemplateMcpInstallError(coerceErrorMessage(error), refs);
+        const result = await setConfiguredMcpServer({
+          name: action.id,
+          server,
+          createOnly: true,
+          skipLifecycleLease: true,
+          assertCurrent,
+          assertCurrentAsync: async () => {
+            await options.prepareEffect?.();
+            await lease.assertOwned();
+            assertCurrent();
+          },
+        });
+        if (!result.ok) {
+          // Refused before writing, so there is nothing to roll back.
+          refs.pop();
+          throw new Error(result.error);
         }
-      }
-      if (configured) {
-        refs.push(ref);
+        assertCurrent();
       }
     });
   }
-  return refs;
 }
 
 /** Remove unchanged MCP entries introduced before a failed Add published its agent. */

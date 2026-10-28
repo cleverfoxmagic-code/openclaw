@@ -342,10 +342,11 @@ describe("stateless Template Add", () => {
         introducedPackage,
         reusedPackage,
       ]);
-      vi.spyOn(mcpInstall, "installTemplateMcpServersStateless").mockResolvedValueOnce([
-        introducedMcp,
-        reusedMcp,
-      ]);
+      vi.spyOn(mcpInstall, "installTemplateMcpServersStateless").mockImplementationOnce(
+        async (_plan, { refs }) => {
+          refs.push(introducedMcp, reusedMcp);
+        },
+      );
 
       const result = await apply(plan, {
         commitConfig: async () => {

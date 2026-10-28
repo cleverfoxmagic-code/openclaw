@@ -211,7 +211,7 @@ describe.skipIf(!browserAvailable)("Templates discovery and Add", () => {
     );
     // Four-column cards are too narrow to fit the name between the artwork and Add.
     const titleRow = await page
-      .locator("[data-templates-featured] [data-templates-entry] .agents-home__claw-head")
+      .locator("[data-templates-featured] [data-templates-entry] .agents-home__template-head")
       .first()
       .evaluate((head) => ({
         head: head.getBoundingClientRect().width,

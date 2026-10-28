@@ -38,7 +38,7 @@ const routes: Array<{ id: RouteId; ready?: string }> = [
   { id: "meetings" },
   { id: "apps" },
   { id: "portals" },
-  { id: "templates", ready: ".agents-home__claw-empty" },
+  { id: "templates", ready: ".agents-home__template-empty" },
   { id: "agents" },
   { id: "channels" },
   { id: "appearance", ready: "openclaw-config-page" },

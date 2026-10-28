@@ -235,14 +235,14 @@ it.each([false, true])("preserves Template cleanup custody: gateway=%s", (gatewa
     .run(input.agentId, path.join(input.workspaceDir, "AGENTS.md"), input.workspaceDir);
   expect(pending(database)).toMatchObject({
     entries: gatewayOwned ? [expect.objectContaining({ agentId: input.agentId })] : [],
-    manualClawAgentIds: gatewayOwned ? [] : [input.agentId],
+    manualTemplateAgentIds: gatewayOwned ? [] : [input.agentId],
   });
   const facts = readRetainedAgentDeletionsFromDatabase(database.db, database.path);
   expect(facts).toMatchObject({
     status: "present",
     entries: [{ agentId: input.agentId, cleanupCompleted: false }],
   });
-  expect(facts.status === "present" && facts.entries[0]?.manualClawRemoval).toBe(
+  expect(facts.status === "present" && facts.entries[0]?.manualTemplateRemoval).toBe(
     gatewayOwned ? undefined : true,
   );
   const recover = (operationId: string) =>

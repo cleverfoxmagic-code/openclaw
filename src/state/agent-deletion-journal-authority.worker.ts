@@ -42,7 +42,7 @@ export function readAgentDeletionJournalAuthorityInDatabase(
   };
 }
 
-export function hasClawDeletionOwnership(
+export function hasTemplateDeletionOwnership(
   database: Pick<OpenClawStateDatabase, "db">,
   agentId: string,
 ): boolean {

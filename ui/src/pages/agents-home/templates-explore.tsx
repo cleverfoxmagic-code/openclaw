@@ -61,25 +61,25 @@ function TemplateCard(props: {
   onSelect?: (entry: TemplateCatalogEntry) => void;
 }) {
   return (
-    <article class="agents-home__claw-card oc-card" data-templates-entry>
+    <article class="agents-home__template-card oc-card" data-templates-entry>
       <button
         type="button"
-        class="agents-home__claw-card-link"
+        class="agents-home__template-card-link"
         aria-label={`${t("templatesCatalog.review")} ${props.entry.displayName}`}
         disabled={!props.entry.latestVersion}
         onClick={() => props.onSelect?.(props.entry)}
       />
-      <div class="agents-home__claw-head">
-        <span class="agents-home__claw-art" aria-hidden="true">
+      <div class="agents-home__template-head">
+        <span class="agents-home__template-art" aria-hidden="true">
           <TemplateArtwork src={props.entry.iconUrl} />
         </span>
-        <div class="agents-home__claw-identity">
+        <div class="agents-home__template-identity">
           <h3>{props.entry.displayName}</h3>
           <span>{`@${props.entry.ownerHandle}`}</span>
         </div>
         <button
           type="button"
-          class="btn btn--sm agents-home__claw-add oc-action oc-action-secondary"
+          class="btn btn--sm agents-home__template-add oc-action oc-action-secondary"
           aria-label={t("templatesCatalog.addNamed", { name: props.entry.displayName })}
           disabled={!props.entry.latestVersion}
           onClick={() => props.onSelect?.(props.entry)}
@@ -88,7 +88,7 @@ function TemplateCard(props: {
         </button>
       </div>
       <Show when={props.entry.summary}>
-        <p class="agents-home__claw-summary">{props.entry.summary}</p>
+        <p class="agents-home__template-summary">{props.entry.summary}</p>
       </Show>
     </article>
   );
@@ -278,7 +278,9 @@ export function TemplatesExplore(props: { onSelect?: (entry: TemplateCatalogEntr
                             aria-label={t("templatesCatalog.loading")}
                           >
                             <Repeat count={4}>
-                              {() => <div class="agents-home__claw-skeleton" aria-hidden="true" />}
+                              {() => (
+                                <div class="agents-home__template-skeleton" aria-hidden="true" />
+                              )}
                             </Repeat>
                           </div>
                         }
@@ -292,7 +294,7 @@ export function TemplatesExplore(props: { onSelect?: (entry: TemplateCatalogEntr
                             result().sections.length === 0
                           }
                         >
-                          <p class="agents-home__claw-empty">{t("templatesCatalog.empty")}</p>
+                          <p class="agents-home__template-empty">{t("templatesCatalog.empty")}</p>
                         </Show>
                         <Show when={overview && result().featured.length > 0}>
                           <CatalogDiscoverySection

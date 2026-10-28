@@ -178,7 +178,7 @@ describe("Templates discovery", () => {
     expect(page.textContent).not.toContain("Manage agents");
     expect(request.mock.calls.some(([method]) => method === "sessions.list")).toBe(false);
 
-    page.querySelector<HTMLButtonElement>(".agents-home__claw-card-link")?.click();
+    page.querySelector<HTMLButtonElement>(".agents-home__template-card-link")?.click();
     expect(navigate).toHaveBeenCalledWith("templates", {
       pathname: "/templates/packages/%40openclaw%2Fworkflow-operator",
     });
@@ -430,7 +430,7 @@ describe("Templates discovery", () => {
     };
     enter("cancelled");
     enter("stale");
-    expect(page.querySelectorAll(".agents-home__claw-skeleton")).toHaveLength(4);
+    expect(page.querySelectorAll(".agents-home__template-skeleton")).toHaveLength(4);
     await vi.advanceTimersByTimeAsync(149);
     expect(request).not.toHaveBeenCalledWith("templates.catalog.search", { query: "stale" });
     await vi.advanceTimersByTimeAsync(1);
@@ -869,7 +869,8 @@ it.each(["card", "detail"])(
     const templateIconUrl = `https://clawhub.ai/api/v1/skill-icons/${"a".repeat(64)}`;
     const options = { templateIconUrl, templatesEnabled: true };
     const container = surface === "card" ? createPage(options).page : createDetail(options).detail;
-    const selector = surface === "card" ? ".agents-home__claw-art" : ".plugin-catalog-detail__icon";
+    const selector =
+      surface === "card" ? ".agents-home__template-art" : ".plugin-catalog-detail__icon";
     await waitForSolid(() =>
       expect(container.querySelector(`${selector} img`)?.getAttribute("src")).toBe(templateIconUrl),
     );

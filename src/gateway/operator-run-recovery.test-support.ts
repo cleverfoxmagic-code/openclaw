@@ -71,6 +71,7 @@ export async function createOperatorRecoveryFixture(params: {
   agentId?: string;
   sessionKey?: string;
   sessionId?: string;
+  storePath?: string;
   parentSessionKey?: string | null;
   scopes?: string[];
   device?: PairedDevice;
@@ -155,7 +156,9 @@ export async function createOperatorRecoveryFixture(params: {
     agentId,
     sessionKey: params.sessionKey ?? `agent:${agentId}:recovery-authority`,
     sessionId: params.sessionId ?? "recovery-authority-session",
-    storePath: path.join(params.stateDir, "agents", agentId, "sessions", "sessions.json"),
+    storePath:
+      params.storePath ??
+      path.join(params.stateDir, "agents", agentId, "sessions", "sessions.json"),
     sourceRunId: params.sourceRunId ?? "original-operator-turn",
     recoveryRunId: "recovered-operator-turn",
   };

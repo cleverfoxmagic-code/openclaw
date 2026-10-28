@@ -1,3 +1,4 @@
+import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { __setFsSafeTestHooksForTest } from "@openclaw/fs-safe/test-hooks";
@@ -7,6 +8,7 @@ import {
   createRebindableDirectoryAlias,
   withRealpathSymlinkRebindRace,
 } from "../test-utils/symlink-rebind-race.js";
+import { resolvePatchFileOps } from "./apply-patch-file-ops.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import { applyPatch, createMemoryPatchSandbox } from "./apply-patch.test-support.js";
 import { resolveSandboxFileMutationQueueKey } from "./sandbox/file-mutation-identity.js";
@@ -38,6 +40,23 @@ function buildUpdatePatch(target: string, hunk: string, moveTo?: string): string
   const move = moveTo === undefined ? "" : `*** Move to: ${moveTo}\n`;
   return `*** Begin Patch\n*** Update File: ${target}\n${move}@@\n${hunk}\n*** End Patch`;
 }
+
+it("reads admitted patch contents without synchronous descriptor I/O", async () => {
+  const { dir, file } = await makeFile("original\n");
+  const ops = await resolvePatchFileOps({ cwd: dir });
+  const readFileSync = syncFs.readFileSync.bind(syncFs);
+  const read = vi.spyOn(syncFs, "readFileSync").mockImplementation((...args) => {
+    if (typeof args[0] === "number") {
+      throw new Error("Synchronous descriptor reads block every Gateway client");
+    }
+    return readFileSync(...args);
+  });
+  try {
+    await expect(ops.readFile(file)).resolves.toBe("original\n");
+  } finally {
+    read.mockRestore();
+  }
+});
 
 it("fences apply_patch after a file read when permissions change", async () => {
   const { dir, file: target } = await makeFile("original\n", "permission.txt");

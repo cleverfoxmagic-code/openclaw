@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import "../test-utils/prepare-compiled-subprocesses.js";
+import type { ModelDefinitionConfig } from "../config/types.models.js";
 import { NON_ENV_SECRETREF_MARKER } from "../secrets/provider-credential-values.js";
 import { modelDefinition } from "./model-auth.fixtures.test-support.js";
 import type { ExistingProviderConfig, ProviderModelCatalog } from "./models-config.merge.js";
@@ -70,6 +71,42 @@ describe("models-config merge", () => {
     if (overrides.models) {
       expect(merged.models).toEqual(catalog.models);
     }
+  });
+
+  const typedChat = {
+    chat: true,
+    decision: { protocol: "openai-decisions", input: ["text" as const] },
+  };
+  const offRoute = { baseUrl: "https://config.example" };
+  type InferenceCase = {
+    discovered?: ModelDefinitionConfig["inference"];
+    route?: ProviderOverrides;
+    configured?: { chat: boolean };
+    expected: unknown;
+  };
+  it.each<InferenceCase>([
+    { discovered: { chat: true }, expected: { chat: true } },
+    { discovered: { chat: true }, route: offRoute, expected: undefined },
+    { discovered: typedChat, expected: typedChat },
+    { discovered: typedChat, route: offRoute, expected: { chat: false } },
+    {
+      discovered: { chat: false },
+      route: { api: "openai-completions" },
+      expected: { chat: false },
+    },
+    { route: offRoute, expected: undefined },
+    {
+      discovered: typedChat,
+      route: offRoute,
+      configured: { chat: true },
+      expected: { chat: true },
+    },
+  ])("keeps only typed inference vetoes off-route: %j", (testCase) => {
+    const merged = merge.mergeProviderModels(
+      provider({ models: [model({ inference: testCase.discovered })] }),
+      provider({ models: [model({ inference: testCase.configured })], ...testCase.route }),
+    );
+    expect(merged.models[0]?.inference).toEqual(testCase.expected);
   });
 
   it("normalizes providers, retaining valid secrets and dropping invalid stale catalogs", () => {

@@ -464,7 +464,7 @@ itPosix.each([
       });
     } else {
       expect(result.status, result.stderr).toBe(1);
-      expect(result.stderr).toContain("Bootstrap helper qualification failed");
+      expect(result.stderr).toContain("Bootstrap closure unavailable");
       expect(result.stdout).not.toContain("legacy anchor loaded");
     }
     expect(existsSync(marker)).toBe(false);

@@ -297,12 +297,8 @@ process.exit(99);
               ? execPrGhAsync(["repo", "set-default", "--view"], options, "plain")
               : execPrGh(["repo", "set-default", "--view"], options, "plain"),
           );
-          const failure = await task.then(
-            () => undefined,
-            (error: { status: number }) => error,
-          );
-          expect(failure).toMatchObject({ status: expect.any(Number) });
-          expect(failure?.status).not.toBe(0);
+          await expect(task).rejects.toMatchObject({ status: expect.any(Number) });
+          await expect(task).rejects.not.toMatchObject({ status: 0 });
           const observed = readCalls().slice(count);
           expect(observed.length).toBeGreaterThan(0);
           expect(observed.every((record) => record.cwd === cwd && record.depth === 1)).toBe(true);

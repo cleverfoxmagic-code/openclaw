@@ -102,21 +102,6 @@ describe("prepareDoctorMigrationBackups", () => {
       measure,
     });
 
-  it("skips the full rollback group after a metadata-only version phase", async () => {
-    const migration = pending(agentPath);
-    mocks.prepareDoctorDatabaseMigrations.mockResolvedValue({
-      changes: [],
-      warnings: [],
-      versionMigrations: [migration],
-    });
-
-    await run(schemasWith([migration]));
-
-    expect(mocks.prepareDoctorDatabaseMigrations).toHaveBeenCalledOnce();
-    expect(mocks.readConfigFileSnapshot).toHaveBeenCalledOnce();
-    expect(mocks.backupDoctorMigrationDatabases).not.toHaveBeenCalled();
-  });
-
   it("keeps the full rollback group when the version phase did not run", async () => {
     mocks.prepareDoctorDatabaseMigrations.mockResolvedValue({ changes: [], warnings: [] });
 

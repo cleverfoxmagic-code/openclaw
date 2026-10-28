@@ -6,6 +6,7 @@ import { featurePrincipal } from "./access.js";
 import { contract } from "./contract.js";
 import { createKnowledgeService } from "./service.js";
 import { parsePolicy } from "./stores-config.js";
+import type { GrantChangeInput } from "./stores-contract.js";
 import { Stores } from "./stores.js";
 import {
   afterTest,
@@ -54,14 +55,14 @@ async function fixture(options = {}) {
     );
   const titles = async (ctx: FeatureInvocationContext) =>
     (await service.records({}, ctx)).records.map((r) => r.title).toSorted(defaultOrder);
-  const grant = async (sessionKey: string, access: string, context = admin) => {
+  const grant = async (sessionKey: string, access: GrantChangeInput["access"], context = admin) => {
     const input = {
       expectedRevision: (await service.stores_snapshot({}, admin)).grants.revision,
       sessionKey,
       access,
     };
     expect(Check(contract.operations.stores_grant.input, input)).toBeTruthy();
-    const result = await service.stores_grant(input as any, context);
+    const result = await service.stores_grant(input, context);
     expect(Check(contract.operations.stores_grant.output, result), JSON.stringify(result)).toBe(
       true,
     );

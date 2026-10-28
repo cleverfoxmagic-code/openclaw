@@ -173,6 +173,23 @@ it("grant changes need operator admin and the current revision, and persist in t
     { sessionKey: GROUP, agent: "main", access: "read" },
   ]);
   expect((await f.grant("agent:ghost:discord:channel:1", "read")).outcome).toBe("invalid");
+  // The operator's agent ceiling is checked at the write, after every await.
+  let allowsMain = true;
+  const roleScoped = operatorContext(f.api, ["operator.admin"]);
+  roleScoped.action.client.allowsAgent = (agent: string) => agent !== "main" || allowsMain;
+  const pending = f.service.stores_grant(
+    {
+      expectedRevision: (await f.service.stores_snapshot({}, f.admin)).grants.revision,
+      sessionKey: "agent:main:discord:channel:777",
+      access: "read-write",
+    },
+    roleScoped,
+  );
+  allowsMain = false;
+  expect((await pending).outcome).toBe("forbidden");
+  expect(
+    (await f.service.stores_snapshot({}, f.admin)).grants.entries.map((e) => e.sessionKey),
+  ).toStrictEqual([GROUP]);
   // Grants are Knowledge state, not configuration, and survive a restart.
   expect(f.host.config.plugins.entries.knowledge.config).not.toHaveProperty("conversationGrants");
   await Promise.all(f.services.map((s: any) => s.stop()));

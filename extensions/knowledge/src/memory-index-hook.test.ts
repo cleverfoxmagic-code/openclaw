@@ -67,7 +67,12 @@ it("pins the index per physical store, so a binding moved to a fresh store rende
     async ensure() {},
     grantFor: () => undefined,
     async open(_principal: unknown, _options: { provision: boolean }): Promise<unknown> {
-      return { kind: "ready", binding: "agent:main", runtime, access: { assertCurrent() {} } };
+      return {
+        kind: "ready",
+        binding: "agent:main",
+        runtime,
+        access: { scope: { visibility: "private" }, assertCurrent() {} },
+      };
     },
   };
   // SAFETY: readMemoryIndex calls only the members stubbed above.
@@ -83,6 +88,44 @@ it("pins the index per physical store, so a binding moved to a fresh store rende
   expect(await readMemoryIndex(stores, ctx, 1)).toBe("index of vault-shared");
   vaultId = "vault-own";
   expect(await readMemoryIndex(stores, ctx, 1)).toBe("index of vault-own");
+});
+
+it("never reuses a pinned index once the opened principal is no longer private", async () => {
+  let scope: { visibility: string; sessionId?: string } = { visibility: "private" };
+  const runtime = {
+    vaultId: "vault-one",
+    enqueue: (check: () => void, operation: () => unknown) => {
+      check();
+      return operation();
+    },
+    client: { call: async () => ({ text: "private index" }) },
+  };
+  // A grant revoked while the store opens: the opened access is pinned to the conversation.
+  const stub = {
+    async ensure() {},
+    grantFor: () => undefined,
+    async open(): Promise<unknown> {
+      return {
+        kind: "ready",
+        binding: "agent:main",
+        runtime,
+        access: { scope, assertCurrent() {} },
+      };
+    },
+  };
+  // SAFETY: readMemoryIndex calls only the members stubbed above.
+  const stores = stub as unknown as Stores;
+  const ctx = {
+    agentId: "main",
+    sessionKey: `agent:main:revoke-${randomUUID()}`,
+    sessionId: randomUUID(),
+    sandboxed: false,
+    memoryAudience: { kind: "owner-private" as const, agentId: "main" },
+    assertMemoryAudienceCurrent() {},
+  };
+  expect(await readMemoryIndex(stores, ctx, 1)).toBe("private index");
+  scope = { visibility: "conversation", sessionId: ctx.sessionId };
+  expect(await readMemoryIndex(stores, ctx, 1)).toBe("");
 });
 
 it("omits the index for conversation, missing and sandboxed audiences and revoked callers", async () => {

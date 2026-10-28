@@ -98,6 +98,11 @@ export async function readMemoryIndex(
     return "";
   }
   const { runtime, access, binding } = opened;
+  // A grant revoked while the store opened pins a conversation principal; only
+  // a principal pinned to the private partition may reuse or render the index.
+  if (access.scope.visibility !== "private") {
+    return "";
+  }
   // A binding can move to a different physical store (share, then use own), so the
   // vault identity keys the pin too.
   const key = JSON.stringify([

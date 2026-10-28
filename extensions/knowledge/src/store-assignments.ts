@@ -485,12 +485,6 @@ export function createStoreOperations(stores: Stores) {
     }
     const agent = grantAgent(input.sessionKey);
     const client = context.source === "session-action" ? context.action.client : undefined;
-    if (client?.allowsAgent && !client.allowsAgent(agent)) {
-      return {
-        outcome: "forbidden",
-        message: `Your operator role does not include agent "${agent}". Nothing was changed.`,
-      };
-    }
     await stores.ensure();
     const conflict = async (): Promise<StoresChangeOutput> => ({
       outcome: "conflict",
@@ -522,8 +516,15 @@ export function createStoreOperations(stores: Stores) {
     } else {
       next[input.sessionKey] = input.access;
     }
-    // The operator may have disconnected or lost access while this waited.
+    // Checked at the write: the operator may have disconnected, or lost this
+    // agent from their role, while this waited.
     assertCallerCurrent(context);
+    if (client?.allowsAgent && !client.allowsAgent(agent)) {
+      return {
+        outcome: "forbidden",
+        message: `Your operator role does not include agent "${agent}". Nothing was changed.`,
+      };
+    }
     await stores.registry.call("grant", input.sessionKey, input.access, input.expectedRevision);
     if (stores.grants().revision !== grantsRevision(next)) {
       return conflict();

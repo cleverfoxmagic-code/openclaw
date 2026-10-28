@@ -14,7 +14,12 @@ import { readStateSchemaContentVersion } from "./openclaw-state-db-schema-versio
 import { closeOpenClawStateDatabaseAsync, openOpenClawStateDatabase } from "./openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "./openclaw-state-db.paths.js";
 import { getOpenClawStateFeatureSchemaSql } from "./openclaw-state-feature-schema.js";
-import { createInitialStateSchemaShape } from "./openclaw-state-schema.test-support.js";
+import { OPENCLAW_STATE_SCHEMA_SQL } from "./openclaw-state-schema.js";
+import {
+  addPreCutoverClientCredentialTablesForTest,
+  createInitialStateSchemaShape,
+  restorePreTemplateStateIdentifiersForTest,
+} from "./openclaw-state-schema.test-support.js";
 import {
   collectSqliteSchemaShape,
   normalizeSqliteSchemaShapeSql,
@@ -138,6 +143,24 @@ it("creates fresh shared state directly at the canonical Template version", () =
   const env = { OPENCLAW_STATE_DIR: dirs.make("state-template-fresh-") };
   const db = openOpenClawStateDatabase({ env }).db;
   expectCanonical(db);
+});
+
+it("adds credential fixture tables without downgrading an already current Template schema", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(OPENCLAW_STATE_SCHEMA_SQL);
+  db.exec(`PRAGMA user_version = 36;
+    INSERT INTO schema_meta VALUES ('primary', 'global', 36, NULL, 'current-fixture', 100, 100);`);
+  const schema = db.prepare(
+    "SELECT name, sql FROM sqlite_schema WHERE name GLOB 'template_*' ORDER BY name",
+  );
+  const before = schema.all();
+  addPreCutoverClientCredentialTablesForTest(db);
+  expect(schema.all()).toEqual(before);
+  expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 36 });
+  expect(
+    db.prepare("SELECT schema_version FROM schema_meta WHERE meta_key = 'primary'").get(),
+  ).toEqual({ schema_version: 36 });
+  expect(db.prepare("SELECT name FROM sqlite_schema WHERE name GLOB 'claw_*'").all()).toEqual([]);
 });
 
 it("rolls back the complete cutover when version publication is refused", async () => {
@@ -275,4 +298,40 @@ it("repairs same-version Template bootstrap columns with a missing index through
       collectSqliteSchemaShape(requireNativeSqliteDatabase(reopened.db)),
     ),
   ).toEqual(normalizeSqliteSchemaShapeSql(createInitialStateSchemaShape()));
+});
+
+it("restores only predecessor-owned definitions while retaining local CHECKs, indexes, triggers and rowids", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec(OPENCLAW_STATE_SCHEMA_SQL);
+  db.exec(`ALTER TABLE template_package_refs ADD COLUMN local_label TEXT NOT NULL
+      DEFAULT 'template' CHECK (local_label = 'template');
+    CREATE TABLE fixture_local_effects (value TEXT);
+    CREATE INDEX fixture_local_label ON template_package_refs(local_label)
+      WHERE local_label = 'template';
+    CREATE TRIGGER fixture_local_effect AFTER UPDATE ON template_package_refs
+      BEGIN INSERT INTO fixture_local_effects VALUES ('template-introduced'); END;
+    INSERT INTO template_package_refs
+      (rowid, agent_id, package_kind, package_source, package_ref, package_version,
+       package_integrity, schema_version, template_name, package_status, relationship,
+       origin, independent_owner, installed_at_ms, updated_at_ms)
+      VALUES (71, 'fixture', 'skill', 'clawhub', '@fixture/package', '0.1.1',
+        'sha256:retained', 'openclaw.templatePackageRef.v1', 'literal template_name',
+        'complete', 'managed', 'template-introduced', 0, 100, 100);`);
+  restorePreTemplateStateIdentifiersForTest(db);
+  expect(
+    db.prepare("SELECT rowid, claw_name, origin, local_label FROM claw_package_refs").get(),
+  ).toEqual({
+    rowid: 71,
+    claw_name: "literal template_name",
+    origin: "claw-introduced",
+    local_label: "template",
+  });
+  expect(
+    db.prepare("SELECT sql FROM sqlite_schema WHERE name = 'fixture_local_label'").get()?.sql,
+  ).toContain("local_label = 'template'");
+  expect(db.prepare("SELECT * FROM fixture_local_effects").all()).toEqual([]);
+  db.exec("UPDATE claw_package_refs SET package_status = 'retained'");
+  expect(db.prepare("SELECT * FROM fixture_local_effects").all()).toEqual([
+    { value: "template-introduced" },
+  ]);
 });

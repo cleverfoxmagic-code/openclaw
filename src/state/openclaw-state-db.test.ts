@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { captureThrown } from "../../test/helpers/capture-thrown.js";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import {
   cleanupTempDirs,
@@ -87,7 +86,10 @@ import { removePreparedWorkerOwnershipColumns } from "./openclaw-state-schema-v1
 import { OPENCLAW_STATE_SCHEMA_SQL } from "./openclaw-state-schema.js";
 import {
   addPreCutoverClientCredentialTablesForTest,
+  restorePreTemplateStateIdentifiersForTest,
   createInitialStateSchemaShape,
+  captureStateDatabaseFailure as captureFailure,
+  expectStateSchemaMigrationRequired,
   expectStateSchemaRepair as expectRepair,
   withStateMigrationBackupForTest,
 } from "./openclaw-state-schema.test-support.js";
@@ -253,22 +255,6 @@ function createTempStateDir(): string {
   return makeTempDir(stateDbTempDirs, "openclaw-state-db-");
 }
 
-function captureFailure(run: () => unknown) {
-  return captureThrown(run, "Expected operation to fail");
-}
-
-function expectStateSchemaMigrationRequired(
-  run: () => unknown,
-  expected: {
-    kind: OpenClawStateDatabaseSchemaMigrationRequiredError["kind"];
-    pathname: string;
-  },
-): void {
-  const caught = captureFailure(run);
-  expect(caught).toBeInstanceOf(OpenClawStateDatabaseSchemaMigrationRequiredError);
-  expect(caught).toMatchObject(expected);
-}
-
 const LEGACY_SESSION_WATCH_SCHEMA_VERSION = 3;
 const LEGACY_AMBIENT_WATCH_PREFIX = "ambient-group-watch:";
 
@@ -378,6 +364,7 @@ function seedLegacySessionWatchCursorSchema(stateDir: string) {
   const marker = (watcher: string) =>
     LEGACY_AMBIENT_WATCH_PREFIX + Buffer.from(watcher, "utf8").toString("hex");
   withDatabase(databasePath, (legacy) => {
+    restorePreTemplateStateIdentifiersForTest(legacy);
     addPreCutoverClientCredentialTablesForTest(legacy);
     legacy.exec(`
       PRAGMA foreign_keys = OFF;
@@ -432,6 +419,7 @@ function createLegacyAuditStateDatabase(stateDir: string): string {
   const databasePath = path.join(stateDir, "state", "openclaw.sqlite");
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   withDatabase(databasePath, (db) => {
+    restorePreTemplateStateIdentifiersForTest(db);
     addPreCutoverClientCredentialTablesForTest(db);
     installShippedTables(db, ["schema_meta", "audit_events"]);
     db.exec(`
@@ -471,6 +459,7 @@ function materializeCurrentStateDatabase(stateDir: string): string {
 }
 
 function downgradeWorkerPlacementsToV7(db: DatabaseSync): void {
+  restorePreTemplateStateIdentifiersForTest(db);
   addPreCutoverClientCredentialTablesForTest(db);
   const row = db
     .prepare(
@@ -645,6 +634,7 @@ afterAll(async () => {
 describe("openclaw state database", () => {
   it("requires Doctor to repair the dangling Workshop review index in schema v16", async () => {
     const { options, databasePath } = createStateFixture((database) => {
+      restorePreTemplateStateIdentifiersForTest(database);
       addPreCutoverClientCredentialTablesForTest(database);
       database.exec(
         "CREATE TABLE skill_workshop_collection_reviews (review_id TEXT NOT NULL PRIMARY KEY, owner_agent_id TEXT NOT NULL, backup_id TEXT NOT NULL, create_time INTEGER NOT NULL, kept_names_json TEXT NOT NULL, written_names_json TEXT NOT NULL, dropped_json TEXT NOT NULL) STRICT;",
@@ -895,6 +885,7 @@ describe("openclaw state database", () => {
       fs.writeFileSync(copiedInRootPath, "");
       const { DatabaseSync } = requireNodeSqlite();
       const legacy = new DatabaseSync(databasePath);
+      restorePreTemplateStateIdentifiersForTest(legacy);
       addPreCutoverClientCredentialTablesForTest(legacy);
       const insert = legacy.prepare(
         `INSERT INTO agent_databases (
@@ -975,6 +966,7 @@ describe("openclaw state database", () => {
 
   it("retires v10 skill curator projections through runtime open while preserving live skill usage and proposal provenance", async () => {
     const { options, databasePath } = createStateFixture((legacy) => {
+      restorePreTemplateStateIdentifiersForTest(legacy);
       addPreCutoverClientCredentialTablesForTest(legacy);
       legacy.exec(STATE_SCHEMA_12_TO_11_DOWNGRADE_SQL);
       legacy.exec(STATE_SCHEMA_11_TO_10_TABLES_SQL);
@@ -1049,6 +1041,7 @@ describe("openclaw state database", () => {
 
   it("folds v11 singleton state into machine-state keys through doctor repair", async () => {
     const { options, databasePath } = createStateFixture((legacy) => {
+      restorePreTemplateStateIdentifiersForTest(legacy);
       addPreCutoverClientCredentialTablesForTest(legacy);
       legacy.exec(STATE_SCHEMA_12_TO_11_DOWNGRADE_SQL);
       legacy.exec(`
@@ -1208,6 +1201,7 @@ describe("openclaw state database", () => {
   it("migrates legacy wide rows through Doctor without path aliases while preserving store provenance and hydrated jobs", async () => {
     const { stateDir, options, databasePath } = createStateFixture();
     const legacy = openNativeDatabase(databasePath);
+    restorePreTemplateStateIdentifiersForTest(legacy);
     addPreCutoverClientCredentialTablesForTest(legacy);
     legacy.exec(STATE_SCHEMA_13_TO_12_DOWNGRADE_SQL);
     legacy.exec("DROP TABLE gateway_origin_device_tokens;");
@@ -1477,6 +1471,7 @@ describe("openclaw state database", () => {
     const stateDir = createTempStateDir();
     const options = { env: { OPENCLAW_STATE_DIR: stateDir } };
     const legacy = openMaterializedCurrentStateDatabase(stateDir);
+    restorePreTemplateStateIdentifiersForTest(legacy);
     addPreCutoverClientCredentialTablesForTest(legacy);
     legacy.exec(STATE_SCHEMA_13_TO_12_DOWNGRADE_SQL);
     const storeKey = path.join(stateDir, "cron", "jobs.json");
@@ -1523,6 +1518,7 @@ describe("openclaw state database", () => {
     const stateDir = createTempStateDir();
     const options = { env: { OPENCLAW_STATE_DIR: stateDir } };
     const legacy = openMaterializedCurrentStateDatabase(stateDir);
+    restorePreTemplateStateIdentifiersForTest(legacy);
     addPreCutoverClientCredentialTablesForTest(legacy);
     legacy.exec(STATE_SCHEMA_13_TO_12_DOWNGRADE_SQL);
     const insert = legacy.prepare(

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
 import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-assembly.js";
 import type { SqliteSchemaCompatibility } from "../infra/sqlite-schema-contract.js";
@@ -7,6 +8,7 @@ import {
   CLAW_STARTUP_ADDITIVE_STATE_COLUMN_DEFINITIONS,
   ORDERED_STARTUP_ADDITIVE_STATE_COLUMNS,
 } from "./openclaw-state-db-additive-columns.js";
+import type { DB } from "./openclaw-state-db.generated.js";
 
 export const TEMPLATE_STATE_TABLE_RENAMES = [
   ["claw_installs", "template_installs"],
@@ -28,18 +30,36 @@ const orderedColumns = [
   ...ORDERED_STARTUP_ADDITIVE_STATE_COLUMNS.packageUpdatedAt,
   ...ORDERED_STARTUP_ADDITIVE_STATE_COLUMNS.packageIntegrity,
 ];
-const recordVersions: Readonly<Record<string, readonly [string, string][]>> = {
-  template_installs: [1, 2, 3].map((version): [string, string] => [
-    `openclaw.clawInstallRecord.v${version}`,
-    `openclaw.templateInstallRecord.v${version}`,
-  ]),
-  template_workspace_files: [
-    ["openclaw.clawWorkspaceFileRecord.v1", "openclaw.templateWorkspaceFileRecord.v1"],
+type VersionedTemplateTable = keyof Pick<
+  DB,
+  | "template_installs"
+  | "template_workspace_files"
+  | "template_package_refs"
+  | "template_cron_refs"
+  | "template_mcp_server_refs"
+>;
+const recordVersions: readonly (readonly [
+  VersionedTemplateTable,
+  readonly (readonly [string, string])[],
+])[] = [
+  [
+    "template_installs",
+    [1, 2, 3].map((version): [string, string] => [
+      `openclaw.clawInstallRecord.v${version}`,
+      `openclaw.templateInstallRecord.v${version}`,
+    ]),
   ],
-  template_package_refs: [["openclaw.clawPackageRef.v1", "openclaw.templatePackageRef.v1"]],
-  template_cron_refs: [["openclaw.clawCronRef.v1", "openclaw.templateCronRef.v1"]],
-  template_mcp_server_refs: [["openclaw.clawMcpServerRef.v1", "openclaw.templateMcpServerRef.v1"]],
-};
+  [
+    "template_workspace_files",
+    [["openclaw.clawWorkspaceFileRecord.v1", "openclaw.templateWorkspaceFileRecord.v1"]],
+  ],
+  ["template_package_refs", [["openclaw.clawPackageRef.v1", "openclaw.templatePackageRef.v1"]]],
+  ["template_cron_refs", [["openclaw.clawCronRef.v1", "openclaw.templateCronRef.v1"]]],
+  [
+    "template_mcp_server_refs",
+    [["openclaw.clawMcpServerRef.v1", "openclaw.templateMcpServerRef.v1"]],
+  ],
+];
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 /** Historical schema/backup metadata only; runtime readers use canonical names. */
@@ -85,7 +105,7 @@ export function withLegacyTemplateStateCompatibility(
   };
 }
 
-function versionUpdates(table: string, versions: readonly [string, string][]): string {
+function versionUpdates(table: string, versions: readonly (readonly [string, string])[]): string {
   return `UPDATE ${quote(table)} SET schema_version = CASE schema_version
     ${versions.map(([oldValue, newValue]) => `WHEN ${literal(oldValue)} THEN ${literal(newValue)}`).join("\n")}
     ELSE schema_version END WHERE schema_version IN (${versions.map(([oldValue]) => literal(oldValue)).join(", ")});`;
@@ -117,6 +137,7 @@ function migrateTemplateStateNames(db: DatabaseSync, previousVersion: number): b
     if (!name || !known || known.has(name)) {
       return false;
     }
+    // sqlite-allow-raw -- Versioned schema owner adds a captured predecessor column.
     db.exec(`ALTER TABLE ${quote(table)} ADD COLUMN ${declaration};`);
     known.add(name);
     return true;
@@ -129,6 +150,7 @@ function migrateTemplateStateNames(db: DatabaseSync, previousVersion: number): b
           `Both ${oldName} and ${newName} exist; preserve the store for Doctor inspection.`,
         );
       }
+      // sqlite-allow-raw -- Physical table renames belong to this schema transaction.
       db.exec(`ALTER TABLE ${quote(oldName)} RENAME TO ${quote(newName)};`);
       tables.delete(oldName);
       tables.add(newName);
@@ -143,6 +165,7 @@ function migrateTemplateStateNames(db: DatabaseSync, previousVersion: number): b
   }
   for (const [table, oldName, newName] of columns) {
     if (tableColumns.get(table)?.has(oldName)) {
+      // sqlite-allow-raw -- Physical column renames belong to this schema transaction.
       db.exec(`ALTER TABLE ${quote(table)} RENAME COLUMN ${quote(oldName)} TO ${quote(newName)};`);
       tableColumns.get(table)?.delete(oldName);
       tableColumns.get(table)?.add(newName);
@@ -153,8 +176,14 @@ function migrateTemplateStateNames(db: DatabaseSync, previousVersion: number): b
   for (const { tableName, columnName, dataType } of additiveColumns) {
     addColumn(tableName, `${columnName} ${dataType}`);
   }
+  const kysely = getNodeSqliteKysely<DB>(db);
   if (addColumn(...ORDERED_STARTUP_ADDITIVE_STATE_COLUMNS.packageUpdatedAt[0])) {
-    db.exec("UPDATE template_package_refs SET updated_at_ms = installed_at_ms;");
+    executeSqliteQuerySync(
+      db,
+      kysely.updateTable("template_package_refs").set((eb) => ({
+        updated_at_ms: eb.ref("installed_at_ms"),
+      })),
+    );
   }
   for (const [table, definition] of ORDERED_STARTUP_ADDITIVE_STATE_COLUMNS.packageIntegrity) {
     addColumn(table, definition);
@@ -199,20 +228,30 @@ function migrateTemplateStateNames(db: DatabaseSync, previousVersion: number): b
           : quote(name),
       ),
     ].join(", ");
+    // sqlite-allow-raw -- Rebuild captured DDL and copy its dynamic columns/rowids atomically.
     db.exec(`CREATE TABLE ${temporary} ${declaration};
       INSERT INTO ${temporary} (${target}) SELECT ${projection} FROM ${quote(table)};
       DROP TABLE ${quote(table)};
       ALTER TABLE ${temporary} RENAME TO ${quote(table)};`);
     for (const object of [...schema.indexDefinitions.values(), ...schema.triggers.values()]) {
       if (object.table === table && typeof object.sql === "string") {
+        // sqlite-allow-raw -- Restore the rebuilt table's captured local indexes and triggers.
         db.exec(object.sql);
       }
     }
     changed = true;
   }
-  for (const [table, versions] of Object.entries(recordVersions)) {
+  for (const [table, versions] of recordVersions) {
     if (tables.has(table)) {
-      db.exec(versionUpdates(table, versions));
+      for (const [previous, current] of versions) {
+        executeSqliteQuerySync(
+          db,
+          kysely
+            .updateTable(table)
+            .set({ schema_version: current })
+            .where("schema_version", "=", previous),
+        );
+      }
     }
   }
   return changed;
@@ -275,7 +314,5 @@ BEGIN
     ALTER TABLE agent_provenance ADD CONSTRAINT agent_provenance_created_via_check
       CHECK (created_via IN ('operator', 'agent', 'template'));
   END IF;
-  ${Object.entries(recordVersions)
-    .map(([table, versions]) => versionUpdates(table, versions))
-    .join("\n")}
+  ${recordVersions.map(([table, versions]) => versionUpdates(table, versions)).join("\n")}
 END $template_names_v36$;`;

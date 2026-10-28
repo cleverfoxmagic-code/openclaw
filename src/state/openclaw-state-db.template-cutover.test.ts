@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { bindFreshClientCredentialStore } from "../infra/client-credential-migration.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
+import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
 import { requireNativeSqliteDatabase } from "../test-utils/native-sqlite.js";
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "./openclaw-state-db-contract.js";
 import { assertExistingOpenClawStateRuntimeSchema } from "./openclaw-state-db-existing-schema.js";
@@ -243,10 +245,19 @@ it("migrates structured installed records without rewriting user strings or opaq
 // Keep Template-specific additive repair coverage beside its versioned cutover.
 it("repairs same-version Template bootstrap columns with a missing index through its admitted path", async () => {
   const options = { env: { OPENCLAW_STATE_DIR: dirs.make("template-additive-repair-") } };
-  const pathname = openOpenClawStateDatabase(options).path;
+  const sourcePath = openOpenClawStateDatabase({
+    env: { OPENCLAW_STATE_DIR: dirs.make("template-additive-source-") },
+  }).path;
   await closeOpenClawStateDatabaseAsync();
+  const pathname = resolveOpenClawStateSqlitePath(options.env);
+  mkdirSync(path.dirname(pathname), { recursive: true });
+  // Match the original fixture's fresh physical identity, without stale source admissions.
+  copyFileSync(sourcePath, pathname);
   {
     using shippedSchema = new DatabaseSync(pathname);
+    runSqliteImmediateTransactionSync(shippedSchema, () =>
+      bindFreshClientCredentialStore(shippedSchema, { path: pathname, env: options.env }),
+    );
     shippedSchema.exec(`
       ALTER TABLE template_installs DROP COLUMN bootstrap_source_path;
       ALTER TABLE template_installs DROP COLUMN bootstrap_content_digest;

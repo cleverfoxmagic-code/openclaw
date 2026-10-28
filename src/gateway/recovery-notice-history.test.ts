@@ -24,7 +24,7 @@ import type { GatewayRequestContext } from "./server-methods/types.js";
 it("records a confirmed restart notice in its agent history once without another display row", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
     const cfg: OpenClawConfig = {
-      agents: { entries: { main: {}, secondary: {} } },
+      agents: { ownership: "explicit", entries: { main: {}, secondary: {} } },
       channels: { signal: { enabled: true } },
     };
     await state.writeConfig(cfg);

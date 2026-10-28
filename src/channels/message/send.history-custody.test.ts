@@ -9,6 +9,7 @@ import { sendDurableMessageBatchCore } from "./send.js";
 const deliver = vi.hoisted(() =>
   vi.fn<(input: InternalDeliverOutboundPayloadsParams) => Promise<[]>>(async () => []),
 );
+// mock-isolation: Isolate the private delivery handoff; queue integration tests exercise the real runtime.
 vi.mock("../../infra/outbound/deliver.js", () => ({
   deliverOutboundPayloadsInternal: deliver,
   deliverStructuredOutboundPayloadsInternal: deliver,

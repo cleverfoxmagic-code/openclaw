@@ -24,6 +24,7 @@ import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shar
 import { deliverOutboundPayloadsInternal } from "./deliver.js";
 import { recoverPendingDeliveries } from "./delivery-queue-recovery.js";
 import {
+  enqueueDeliveryOnce,
   markDeliveryPlatformOutcomeUnknown,
   markDeliveryPlatformSendAttemptStarted,
 } from "./delivery-queue-storage.js";
@@ -64,47 +65,52 @@ it.each([
     const operationId = `notice-${acceptance}-${state}`;
     const text =
       state === "changed-text" ? `${recoveryNoticeText} Channel annotation.` : recoveryNoticeText;
-    const receiptScope = await createConversationRecoveryFixture({
-      operationId,
-      stateDir,
-      delivery: {
-        ...destination,
-        threadId: state === "wrong-thread" ? 43 : destination.threadId == null ? undefined : "42",
-        session: producer,
-        sessionGeneration: generation,
-        transcriptProvenance: provenance,
-        preparedBatch: {
-          schemaVersion: 1,
-          sourcePayloadCount: 1,
-          channelNormalized: true,
-          entries: [
-            {
-              status: "accepted",
-              sourceIndex: 0,
-              payload: { text },
-              replyHookChanged: false,
-              messageHookChanged: false,
-              preparedMediaCount: 0,
-            },
-          ],
-        },
-        renderedBatchPlan: {
-          payloadCount: 1,
-          textCount: 1,
-          mediaCount: 0,
-          voiceCount: 0,
-          presentationCount: 0,
-          interactiveCount: 0,
-          channelDataCount: 0,
-          items: [{ index: 0, kinds: ["text"], text, mediaUrls: [] }],
-        },
+    const queued = {
+      ...destination,
+      payloads: [{ text }],
+      threadId: state === "wrong-thread" ? 43 : destination.threadId == null ? undefined : "42",
+      session: producer,
+      sessionGeneration: generation,
+      transcriptProvenance: provenance,
+      preparedBatch: {
+        schemaVersion: 1,
+        sourcePayloadCount: 1,
+        channelNormalized: true,
+        entries: [
+          {
+            status: "accepted",
+            sourceIndex: 0,
+            payload: { text },
+            replyHookChanged: false,
+            messageHookChanged: false,
+            preparedMediaCount: 0,
+          },
+        ],
       },
-    });
+      renderedBatchPlan: {
+        payloadCount: 1,
+        textCount: 1,
+        mediaCount: 0,
+        voiceCount: 0,
+        presentationCount: 0,
+        interactiveCount: 0,
+        channelDataCount: 0,
+        items: [{ index: 0, kinds: ["text"], text, mediaUrls: [] }],
+      },
+    } satisfies Parameters<typeof enqueueDeliveryOnce>[0];
     if (acceptance === "accepted") {
+      const receiptScope = await createConversationRecoveryFixture({
+        operationId,
+        stateDir,
+        delivery: queued,
+      });
       await markConversationDeliverySent(receiptScope, operationId, "accepted-platform-message");
-    } else if (acceptance === "reconciled") {
-      await markDeliveryPlatformSendAttemptStarted(operationId, stateDir);
-      await markDeliveryPlatformOutcomeUnknown(operationId, stateDir);
+    } else {
+      await enqueueDeliveryOnce(queued, operationId, stateDir);
+      if (acceptance === "reconciled") {
+        await markDeliveryPlatformSendAttemptStarted(operationId, stateDir);
+        await markDeliveryPlatformOutcomeUnknown(operationId, stateDir);
+      }
     }
     // Identical logical identity in the new configured store cannot inherit old queue custody.
     await replaceSessionEntry({ ...generation, storePath: replacementStore }, entry);
@@ -152,7 +158,13 @@ it.each([
         return {
           channel: "reef",
           messageId: "fresh-platform-message",
-          ...(state.startsWith("receipt-") ? { receipt } : {}),
+          receipt: state.startsWith("receipt-")
+            ? receipt
+            : {
+                platformMessageIds: ["fresh-platform-message"],
+                parts: [],
+                sentAt: 1,
+              },
         };
       },
     );
@@ -174,6 +186,7 @@ it.each([
             }),
             message: {
               id: "reef",
+              send: { text: sendText },
               durableFinal: {
                 capabilities: { reconcileUnknownSend: true },
                 reconcileUnknownSend,
@@ -192,20 +205,29 @@ it.each([
       ),
     );
     const recover = () =>
-      recoverPendingDeliveries({
-        cfg: {
-          agents: { ownership: "explicit", entries: { main: {}, secondary: {} } },
-          session: { store: replacementStore },
-          ...(state === "changed-binding"
-            ? { bindings: [{ agentId: "main", match: { channel: "reef", accountId: "default" } }] }
-            : {}),
+      recoverPendingDeliveries(
+        {
+          cfg: {
+            agents: { ownership: "explicit", entries: { main: {}, secondary: {} } },
+            session: { store: replacementStore },
+            ...(state === "changed-binding"
+              ? {
+                  bindings: [{ agentId: "main", match: { channel: "reef", accountId: "default" } }],
+                }
+              : {}),
+          },
+          stateDir,
+          deliver,
+          log,
         },
-        stateDir,
         deliver,
-        log,
-      });
+      );
     try {
-      expect(await recover()).toMatchObject({ recovered: 1, failed: 0 });
+      const recovered = await recover();
+      expect(
+        recovered,
+        JSON.stringify({ warnings: log.warn.mock.calls, errors: log.error.mock.calls }),
+      ).toMatchObject({ recovered: 1, failed: 0 });
       expect(reconcileUnknownSend).toHaveBeenCalledTimes(acceptance === "reconciled" ? 1 : 0);
       expect(deliver).toHaveBeenCalledTimes(acceptance === "fresh" ? 1 : 0);
       expect(sendText).toHaveBeenCalledTimes(acceptance === "fresh" ? 1 : 0);
@@ -240,8 +262,9 @@ it.each([
           state === "local" || state === "changed-binding",
         );
         expect(JSON.stringify(messages)).not.toContain(originalStore);
-        if (state === "changed-text")
+        if (state === "changed-text") {
           expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("actual text"));
+        }
       }
       expect(await loadTranscriptEvents({ ...generation, storePath: replacementStore })).toEqual(
         [],

@@ -122,9 +122,15 @@ for (const backend of ["sqlite", "memory"] as const) {
                 }),
           });
         }
-        if (scenario === "anchor") predicate.anchor = { ...anchor, rawSeq: anchor.rawSeq + 1 };
-        if (scenario === "idempotency") predicate.noticeId = "different-notice";
-        if (scenario === "route") predicate.destination = { ...destination, threadId: 43 };
+        if (scenario === "anchor") {
+          predicate.anchor = { ...anchor, rawSeq: anchor.rawSeq + 1 };
+        }
+        if (scenario === "idempotency") {
+          predicate.noticeId = "different-notice";
+        }
+        if (scenario === "route") {
+          predicate.destination = { ...destination, threadId: 43 };
+        }
         const text = scenario.includes("changed-text")
           ? "Actual normalized notice."
           : "Recovery stopped.";

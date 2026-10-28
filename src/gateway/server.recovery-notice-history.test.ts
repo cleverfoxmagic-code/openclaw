@@ -181,8 +181,15 @@ it("records a confirmed restart notice in its agent history once without another
           }),
         ).resolves.toMatchObject({ status: "ok" });
         expect(fixture.errors).toEqual([]);
-        expect(fixture.requests).toHaveLength(1);
-        const input = JSON.stringify(JSON.parse(fixture.requests[0]!).input);
+        // Dashboard naming shares this provider; it is separate from the recovered model turn.
+        const isTitleRequest = (body: string) => body.includes("Generate a concise session title");
+        const turnRequests = fixture.requests.filter((body) => !isTitleRequest(body));
+        const requestKinds = fixture.requests.map((body, index) => ({
+          purpose: isTitleRequest(body) ? "title" : "turn",
+          sessionAffinity: fixture.sessionIds[index],
+        }));
+        expect(turnRequests, JSON.stringify(requestKinds)).toHaveLength(1);
+        const input = JSON.stringify(JSON.parse(turnRequests[0]!).input);
         expect(input.split(sentText!)).toHaveLength(2);
         expect(input).not.toContain(savedReply);
         expect(input).not.toContain(target.storePath);

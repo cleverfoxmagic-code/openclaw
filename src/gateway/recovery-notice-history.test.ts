@@ -8,6 +8,7 @@ import {
   replaceSessionEntry,
 } from "../config/sessions/session-accessor.js";
 import { readTranscriptEventMessage } from "../config/sessions/session-accessor.sqlite-read.js";
+import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   captureActivePluginRegistrySnapshot,
@@ -17,6 +18,8 @@ import {
 import { trackAsyncWork } from "../shared/async-work-scope.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { deliveryContextFromSession } from "../utils/delivery-context.read.js";
+import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import { createGatewayMethodRegistry } from "./methods/registry.js";
 import { createGatewayInstanceRuntime } from "./server-instance-runtime.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
@@ -35,15 +38,17 @@ it("records a confirmed restart notice in its agent history once without another
       sessionId: "interrupted-session",
       storePath: path.join(state.sessionsDir("secondary"), "sessions.json"),
     };
+    const delivery = { channel: "signal", to: "synthetic-recipient", accountId: "work" };
     await replaceSessionEntry(target, {
       sessionId: target.sessionId,
       lifecycleRevision: "interrupted-generation",
       updatedAt: 100,
       status: "interrupted",
       abortedLastRun: true,
-      deliveryContext: { channel: "signal", to: "synthetic-recipient", accountId: "work" },
+      delivery: normalizeSessionDeliveryState({ context: delivery }),
       mainRestartRecovery: { cycleId: "exhausted-cycle", revision: 1, chargedAttempts: 3 },
-    });
+    } satisfies InternalSessionEntry);
+    expect(deliveryContextFromSession(loadSessionEntry(target))).toEqual(delivery);
     const sendText = vi.fn(async (_context: { text: string }) => ({
       channel: "signal",
       messageId: "notice-message",
@@ -77,6 +82,7 @@ it("records a confirmed restart notice in its agent history once without another
       getMethodRegistry: () => createGatewayMethodRegistry([]),
       isDispatchAvailable: () => true,
     });
+    const sendNotice = vi.spyOn(runtime.recovery, "sendRecoveryNotice");
     try {
       const recover = () =>
         recoverStore({
@@ -89,6 +95,8 @@ it("records a confirmed restart notice in its agent history once without another
         });
       await recover();
       expect(loadSessionEntry(target)?.mainRestartRecovery?.tombstone).toBeDefined();
+      expect(sendNotice).toHaveBeenCalledOnce();
+      await expect(sendNotice.mock.results[0]?.value).resolves.toEqual({ suppressed: false });
       expect(sendText).toHaveBeenCalledOnce();
       const messages = (await loadTranscriptEvents(target))
         .map(readTranscriptEventMessage)
@@ -114,6 +122,7 @@ it("records a confirmed restart notice in its agent history once without another
         }),
       ).toBeUndefined();
     } finally {
+      sendNotice.mockRestore();
       runtime.close();
       restoreActivePluginRegistrySnapshot(registry);
     }

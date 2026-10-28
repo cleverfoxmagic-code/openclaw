@@ -16,6 +16,31 @@ import {
 } from "./openclaw-state-db-contract.js";
 import { OPENCLAW_STATE_SCHEMA_SQL } from "./openclaw-state-schema.js";
 
+// Historical admission facts use the physical names of their predecessor schemas.
+export const STATE_V6_ADDITIVE_TABLES = [
+  ...LAZY_ADDITIVE_STATE_TABLES,
+  "worker_session_tool_operations",
+  "worker_turn_tool_authorities",
+] as const;
+export const STATE_V5_ADDITIVE_TABLES = [
+  "agent_database_leases",
+  "agent_deletion_journal",
+  "claw_cron_refs",
+  "claw_installs",
+  "claw_mcp_server_refs",
+  "claw_package_refs",
+  "claw_workspace_files",
+  "config_machine_state",
+  "cron_job_scratch",
+  "meeting_transcript_sessions",
+  "meeting_transcript_summaries",
+  "meeting_transcript_utterances",
+  "outbound_media_provenance",
+  "worker_environment_credentials",
+  "worker_transcript_commit_heads",
+  "worker_transcript_commits",
+  ...STATE_V6_ADDITIVE_TABLES,
+] as const;
 // Same-version databases may lack additive columns that only a writable open
 // can ensure, while read-only planning must keep accepting the older shape.
 const CLAW_LAZY_ADDITIVE_STATE_COLUMNS = CLAW_LAZY_ADDITIVE_STATE_COLUMN_DEFINITIONS.map(

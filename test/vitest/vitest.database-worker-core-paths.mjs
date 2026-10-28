@@ -759,6 +759,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/boards/board-store.test.ts",
   "src/boards/sqlite-board-store.worker.test.ts",
   "src/canvas/widget-tool.test.ts",
+  "src/state/openclaw-state-db.template-cutover.test.ts",
+  "src/templates/add-state.worker.test.ts",
   "src/templates/add-stateless.test.ts",
   "src/templates/mcp.test.ts",
   "src/templates/gateway-add-apply.plugin-batch.test.ts",

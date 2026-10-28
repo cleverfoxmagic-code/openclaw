@@ -83,7 +83,7 @@ CREATE TABLE agent_deletion_journal (
 
 CREATE TABLE agent_provenance (
   agent_id TEXT PRIMARY KEY,
-  created_via TEXT NOT NULL CHECK (created_via IN ('operator', 'agent', 'template')),
+  created_via TEXT NOT NULL CHECK (created_via IN ('operator', 'agent', 'claw')),
   creator_agent_id TEXT,
   created_at_ms INTEGER NOT NULL
 ) STRICT;
@@ -247,7 +247,7 @@ CREATE TABLE channel_pairing_requests (
   PRIMARY KEY (channel_key, account_id, request_id)
 ) STRICT;
 
-CREATE TABLE template_cron_refs (
+CREATE TABLE claw_cron_refs (
   agent_id TEXT NOT NULL,
   manifest_id TEXT NOT NULL,
   schema_version TEXT NOT NULL,
@@ -261,12 +261,12 @@ CREATE TABLE template_cron_refs (
   PRIMARY KEY (agent_id, manifest_id)
 ) STRICT;
 
-CREATE TABLE template_installs (
+CREATE TABLE claw_installs (
   agent_id TEXT NOT NULL PRIMARY KEY,
   schema_version TEXT NOT NULL,
   source_kind TEXT NOT NULL,
-  template_name TEXT NOT NULL,
-  template_version TEXT NOT NULL,
+  claw_name TEXT NOT NULL,
+  claw_version TEXT NOT NULL,
   package_root TEXT NOT NULL,
   manifest_path TEXT NOT NULL,
   integrity_kind TEXT NOT NULL,
@@ -286,13 +286,13 @@ CREATE TABLE template_installs (
   updated_at_ms INTEGER NOT NULL
 ) STRICT;
 
-CREATE TABLE template_mcp_server_refs (
+CREATE TABLE claw_mcp_server_refs (
   agent_id TEXT NOT NULL,
   name TEXT NOT NULL,
   schema_version TEXT NOT NULL,
   config_digest TEXT NOT NULL,
   relationship TEXT NOT NULL CHECK (relationship IN ('managed', 'referenced')),
-  origin TEXT NOT NULL CHECK (origin IN ('template-introduced', 'pre-existing')),
+  origin TEXT NOT NULL CHECK (origin IN ('claw-introduced', 'pre-existing')),
   independent_owner INTEGER NOT NULL DEFAULT 0 CHECK (independent_owner IN (0, 1)),
   status TEXT NOT NULL,
   error TEXT,
@@ -301,7 +301,7 @@ CREATE TABLE template_mcp_server_refs (
   PRIMARY KEY (agent_id, name)
 ) STRICT;
 
-CREATE TABLE template_package_refs (
+CREATE TABLE claw_package_refs (
   agent_id TEXT NOT NULL,
   package_kind TEXT NOT NULL,
   package_source TEXT NOT NULL,
@@ -309,10 +309,10 @@ CREATE TABLE template_package_refs (
   package_version TEXT NOT NULL,
   package_integrity TEXT NOT NULL,
   schema_version TEXT NOT NULL,
-  template_name TEXT NOT NULL,
+  claw_name TEXT NOT NULL,
   package_status TEXT NOT NULL,
   relationship TEXT NOT NULL CHECK (relationship IN ('managed', 'referenced')),
-  origin TEXT NOT NULL CHECK (origin IN ('template-introduced', 'pre-existing')),
+  origin TEXT NOT NULL CHECK (origin IN ('claw-introduced', 'pre-existing')),
   independent_owner INTEGER NOT NULL CHECK (independent_owner IN (0, 1)),
   extension_id TEXT,
   extension_format TEXT,
@@ -325,7 +325,7 @@ CREATE TABLE template_package_refs (
   PRIMARY KEY (agent_id, package_kind, package_source, package_ref, package_version)
 ) STRICT;
 
-CREATE TABLE template_workspace_files (
+CREATE TABLE claw_workspace_files (
   agent_id TEXT NOT NULL,
   target_path TEXT NOT NULL,
   schema_version TEXT NOT NULL,

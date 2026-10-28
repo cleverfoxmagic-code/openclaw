@@ -1,8 +1,14 @@
 import type { WorkspaceSetupState } from "../agents/workspace-state-types.js";
+import type { OpenClawStateLeaseIdentity } from "../state/openclaw-state-lease.types.js";
 
 export type TemplateAddStateWorkerOperations = {
   "templates.add.mergeBootstrapSetupState": {
-    input: { workspaceDir: string; bootstrapSeededAt: string; nowMs: number };
+    input: {
+      workspaceDir: string;
+      bootstrapSeededAt: string;
+      nowMs: number;
+      leases?: readonly OpenClawStateLeaseIdentity[];
+    };
     output: WorkspaceSetupState;
   };
 };

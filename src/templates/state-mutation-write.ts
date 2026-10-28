@@ -1,18 +1,18 @@
 import { createSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 import { runWithOpenClawStateLeasesWorker } from "../state/openclaw-state-lease-worker-operation.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import type { OpenClawStateWorkerOperations } from "../state/openclaw-state-worker-contract.js";
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
+import type { TemplateAddStateWorkerOperations } from "./add-state-worker-contract.js";
 import type { TemplateMutationStateOptions } from "./state-mutation-options.js";
 
 export type { TemplateMutationStateOptions } from "./state-mutation-options.js";
 
 export async function executeTemplateMutationStateCommand<
-  Key extends keyof OpenClawStateWorkerOperations,
+  Key extends keyof TemplateAddStateWorkerOperations,
 >(
   options: TemplateMutationStateOptions,
-  command: { type: Key; input: OpenClawStateWorkerOperations[Key]["input"] },
-): Promise<OpenClawStateWorkerOperations[Key]["output"]> {
+  command: { type: Key; input: Omit<TemplateAddStateWorkerOperations[Key]["input"], "leases"> },
+): Promise<TemplateAddStateWorkerOperations[Key]["output"]> {
   if (options.database) {
     throw new Error("Worker-mode Template lifecycle cannot use a caller-owned database handle.");
   }
@@ -23,7 +23,7 @@ export async function executeTemplateMutationStateCommand<
     return runWithOpenClawStateLeasesWorker(
       options.leaseSet.leases,
       context,
-      (scope) => scope.execute(command),
+      (scope, leases) => scope.execute({ ...command, input: { ...command.input, leases } }),
       { assertCurrent: () => assertCurrent?.() },
     );
   }

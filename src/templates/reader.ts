@@ -79,7 +79,10 @@ function workspaceSourceDiagnostic(error: unknown, sourcePath: string): Template
   return fileDiagnostic(code, message, "$.workspace");
 }
 
-function parsePackageJson(value: unknown): PackageJson | undefined {
+function parsePackageJson(
+  value: unknown,
+  allowPublishedLegacyClawSelector: boolean,
+): PackageJson | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -88,7 +91,16 @@ function parsePackageJson(value: unknown): PackageJson | undefined {
   if (!isRecord(openclaw)) {
     return undefined;
   }
-  const { template } = openclaw;
+  const canonical = Object.hasOwn(openclaw, "template");
+  const legacy = Object.hasOwn(openclaw, "claw");
+  if (canonical && legacy) {
+    return undefined;
+  }
+  const template = canonical
+    ? openclaw.template
+    : allowPublishedLegacyClawSelector && legacy && openclaw.claw === TEMPLATE_MARKDOWN_FILENAME
+      ? TEMPLATE_MARKDOWN_FILENAME
+      : undefined;
   if (
     typeof record.name !== "string" ||
     !isCanonicalClawHubPackageName(record.name) ||
@@ -173,6 +185,7 @@ async function readTemplateDocument(
 
 async function resolvePackageSource(
   packageRoot: string,
+  allowPublishedLegacyClawSelector: boolean,
 ): Promise<
   { ok: true; source: ResolvedTemplateSource } | { ok: false; diagnostics: TemplateDiagnostic[] }
 > {
@@ -189,7 +202,7 @@ async function resolvePackageSource(
   if (!packageJsonResult.ok) {
     return packageJsonResult;
   }
-  const packageJson = parsePackageJson(packageJsonResult.value);
+  const packageJson = parsePackageJson(packageJsonResult.value, allowPublishedLegacyClawSelector);
   if (!packageJson) {
     return fileFailure(
       "invalid_package_metadata",
@@ -223,6 +236,7 @@ async function resolvePackageSource(
 
 async function resolveSource(
   path: string,
+  allowPublishedLegacyClawSelector: boolean,
 ): Promise<
   { ok: true; source: ResolvedTemplateSource } | { ok: false; diagnostics: TemplateDiagnostic[] }
 > {
@@ -237,9 +251,12 @@ async function resolveSource(
       !(await sourceRoot.exists("package.json")) &&
       (await sourceRoot.exists(TEMPLATE_MARKDOWN_FILENAME))
     ) {
-      return resolveSource(resolve(inputPath, TEMPLATE_MARKDOWN_FILENAME));
+      return resolveSource(
+        resolve(inputPath, TEMPLATE_MARKDOWN_FILENAME),
+        allowPublishedLegacyClawSelector,
+      );
     }
-    return resolvePackageSource(inputPath);
+    return resolvePackageSource(inputPath, allowPublishedLegacyClawSelector);
   }
   if (!inputStat.isFile()) {
     return fileFailure("unsupported_source", "Template source must be a file or directory.");
@@ -263,6 +280,8 @@ async function resolveSource(
 export async function readTemplateManifestFile(
   path: string,
   options: {
+    /** Only the verified immutable registry-artifact owner enables this historical selector. */
+    allowPublishedLegacyClawSelector?: boolean;
     allowLegacyDynamicToolProfile?: boolean;
     authorizeLegacyLocalUpdateHostSettings?: (params: {
       manifest: TemplateManifest;
@@ -273,7 +292,7 @@ export async function readTemplateManifestFile(
     }) => boolean | Promise<boolean>;
   } = {},
 ): Promise<TemplateReadResult> {
-  const sourceResult = await resolveSource(path);
+  const sourceResult = await resolveSource(path, options.allowPublishedLegacyClawSelector === true);
   if (!sourceResult.ok) {
     return sourceResult;
   }

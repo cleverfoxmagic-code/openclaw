@@ -929,6 +929,7 @@ describe("openclaw state database", () => {
           "Qualified historical cron creator attribution as unknown (v14)",
           "Replaced retained task indexes with ordered cron history indexes (v24)",
           "Removed redundant replay and skill indexes and narrowed the lease-owner index (v27)",
+          "Migrated released starter tables and provenance to canonical Template names (v36)",
         ],
         warnings: [],
       });
@@ -1120,6 +1121,7 @@ describe("openclaw state database", () => {
       "Qualified historical cron creator attribution as unknown (v14)",
       "Replaced retained task indexes with ordered cron history indexes (v24)",
       "Removed redundant replay and skill indexes and narrowed the lease-owner index (v27)",
+      "Migrated released starter tables and provenance to canonical Template names (v36)",
     ]);
 
     const migrated = openOpenClawStateDatabase(options);
@@ -1335,6 +1337,7 @@ describe("openclaw state database", () => {
       "Qualified historical cron creator attribution as unknown (v14)",
       "Replaced retained task indexes with ordered cron history indexes (v24)",
       "Removed redundant replay and skill indexes and narrowed the lease-owner index (v27)",
+      "Migrated released starter tables and provenance to canonical Template names (v36)",
     ]);
 
     const migrated = openOpenClawStateDatabase(options);
@@ -1630,6 +1633,7 @@ describe("openclaw state database", () => {
       { kind: "automation-policy-fence-v30", path: fixture.databasePath },
       { kind: "local-workspace-manifests-v31", path: fixture.databasePath },
       { kind: "local-workspace-cas-v35", path: fixture.databasePath },
+      { kind: "template-names-v36", path: fixture.databasePath },
       { kind: "audit-events-v2", path: fixture.databasePath },
       { kind: "strict-tables-v3", path: fixture.databasePath },
     ]);
@@ -1839,6 +1843,7 @@ describe("openclaw state database", () => {
       { kind: "automation-policy-fence-v30", path: seeded.databasePath },
       { kind: "local-workspace-manifests-v31", path: seeded.databasePath },
       { kind: "local-workspace-cas-v35", path: seeded.databasePath },
+      { kind: "template-names-v36", path: seeded.databasePath },
       { kind: "session-watch-cursor-provenance-v4", path: seeded.databasePath },
     ]);
     await expectRepair(options, [
@@ -1847,6 +1852,7 @@ describe("openclaw state database", () => {
       "Qualified historical cron creator attribution as unknown (v14)",
       "Replaced retained task indexes with ordered cron history indexes (v24)",
       "Removed redundant replay and skill indexes and narrowed the lease-owner index (v27)",
+      "Migrated released starter tables and provenance to canonical Template names (v36)",
     ]);
 
     const migrated = openOpenClawStateDatabase(options);
@@ -1858,33 +1864,6 @@ describe("openclaw state database", () => {
     expectCurrentStateVersion(requireNativeSqliteDatabase(migrated.db));
     closeOpenClawStateDatabaseForTest();
     await expectRepair(options, []);
-  });
-
-  it("repairs same-version Template bootstrap columns with a missing index through its admitted path", () => {
-    const { options } = createStateFixture((shippedSchema) => {
-      shippedSchema.exec(`
-        ALTER TABLE template_installs DROP COLUMN bootstrap_source_path;
-        ALTER TABLE template_installs DROP COLUMN bootstrap_content_digest;
-      `);
-
-      shippedSchema.exec("DROP INDEX idx_task_runs_runtime_run;");
-
-      expectCurrentStateVersion(shippedSchema);
-    });
-
-    const reopened = openOpenClawStateDatabase(options);
-    const columns = reopened.db.prepare("PRAGMA table_info(template_installs)").all() as Array<{
-      name: string;
-    }>;
-    expect(columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["bootstrap_source_path", "bootstrap_content_digest"]),
-    );
-
-    expect(
-      normalizeSqliteSchemaShapeSql(
-        collectSqliteSchemaShape(requireNativeSqliteDatabase(reopened.db)),
-      ),
-    ).toEqual(normalizeSqliteSchemaShapeSql(createInitialStateSchemaShape()));
   });
 
   it("keeps GitHub publication lazy across current-schema open, first use, and reopen", async () => {
@@ -2078,6 +2057,7 @@ describe("openclaw state database", () => {
       { kind: "automation-policy-fence-v30", path: databasePath },
       { kind: "local-workspace-manifests-v31", path: databasePath },
       { kind: "local-workspace-cas-v35", path: databasePath },
+      { kind: "template-names-v36", path: databasePath },
     ]);
 
     await withStateMigrationBackupForTest(options, () => openOpenClawStateDatabase(options));

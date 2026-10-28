@@ -243,12 +243,13 @@ describe.skipIf(!browserAvailable)("Templates discovery and Add", () => {
       expect(await card.textContent()).toContain("@openclaw");
       const detail = await openDetail(page);
       await page.waitForURL(/\/templates\/packages\/%40openclaw%2Fworkflow-operator$/u);
-      if (viewport.name === "desktop")
+      if (viewport.name === "desktop") {
         await capture(
           page,
           "after-detail",
           detail.getByRole("heading", { name: "Workspace files" }),
         );
+      }
       await expectPublisher(detail, "openclaw", true);
       const workspace = detail.locator(".plugin-capabilities").first();
       const help = workspace.getByRole("button", { name: "About SOUL.md" });

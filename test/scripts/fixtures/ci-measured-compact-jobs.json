@@ -508,7 +508,7 @@
           "src/cli/one-shot-exit.test.ts",
           "src/cli/runtime-cleanup-scope.windows.process.test.ts",
           "src/cli/update-finalization-output.process.test.ts",
-          "src/cli/templates-authoring-state.process.test.ts",
+          "src/cli/claws-authoring-state.process.test.ts",
           "src/cli/state-dir-gateway-check.server.test.ts"
         ],
         "timing_key": "agentic-cli-process#selector-54-f7826a9ef2c4#generation-8e36d2d43531#part-7-of-7#include-15-d305c0ae5c0a"

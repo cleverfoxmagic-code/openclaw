@@ -8,7 +8,7 @@ import {
 } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { readTemplateInventory } from "../templates/inventory-read.js";
-import type { PersistedClawPackageRef } from "../templates/package-extension-provenance.js";
+import type { PersistedTemplatePackageRef } from "../templates/package-extension-provenance.js";
 import {
   makeProvenancePlan,
   seedLegacyTemplateInstall,
@@ -63,14 +63,14 @@ it("preserves installed Template and plugin extension facts through the read-onl
     ) VALUES ('openclaw.templatePackageRef.v1', ?, ?, 'plugin', 'clawhub', '@openclaw/tools',
       '1.0.0', 'sha256:fixture', 'complete', 'referenced', 'pre-existing', 1,
       'tools', 'claude', 'claude', '["commands","skills"]', '["agents"]', 'openclaw/v1', 123, 123)
-    `).run(plan.agent.finalId, plan.claw.name);
+    `).run(plan.agent.finalId, plan.template.name);
     },
     { env },
   );
-  const pkg: PersistedClawPackageRef = {
+  const pkg: PersistedTemplatePackageRef = {
     schemaVersion: "openclaw.templatePackageRef.v1",
     agentId: plan.agent.finalId,
-    templateName: plan.claw.name,
+    templateName: plan.template.name,
     kind: "plugin",
     source: "clawhub",
     ref: "@openclaw/tools",

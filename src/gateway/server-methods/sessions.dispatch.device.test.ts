@@ -13,10 +13,8 @@ import {
   setActivePluginRegistry,
 } from "../../plugins/runtime.js";
 import { createDeferredCore } from "../../shared/deferred.js";
-import {
-  closeOpenClawStateDatabaseForTest,
-  openOpenClawStateDatabase,
-} from "../../state/openclaw-state-db.js";
+import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
+import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import type { NodeWorkerSupervisorNodeProof } from "../node-registry-private.js";
 import {
   bindDeviceWorkerAvailability,
@@ -447,7 +445,7 @@ describe("sessions.dispatch device targets", () => {
         expect(harness.environments.createWithRequest).toHaveBeenCalledOnce();
         expect(placements.get("session-1")).toMatchObject({ state: "active" });
       } finally {
-        closeOpenClawStateDatabaseForTest();
+        await closeStateDatabaseForTest();
       }
     });
 
@@ -546,7 +544,7 @@ describe("sessions.dispatch device targets", () => {
             state: destroyFails ? "failed" : "active",
           });
         } finally {
-          closeOpenClawStateDatabaseForTest();
+          await closeStateDatabaseForTest();
         }
       },
     );
@@ -741,7 +739,7 @@ describe("sessions.dispatch device targets", () => {
           expect.objectContaining({ message: expect.stringContaining(rejectedMessage) }),
         );
       } finally {
-        closeOpenClawStateDatabaseForTest();
+        await closeStateDatabaseForTest();
       }
     },
   );

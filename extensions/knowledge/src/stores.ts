@@ -406,6 +406,7 @@ export class Stores {
           vaultId,
           publicationId: store.publicationId,
           writesEnabled: this.policy.writesEnabled,
+          hubPercentile: this.policy.hubPercentile,
         },
         this.changed,
       );

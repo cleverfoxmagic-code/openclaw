@@ -146,7 +146,7 @@ context.
   `summary` (1–500 characters, required), up to 20 `triggers`, `importance`
   (1–10), and up to 20 host `projects` keys.
 - It requires writes enabled and a current owner-private audience, or a
-  conversation audience whose owner grant allows saving. Other conversation
+  conversation audience with a read-and-save owner grant. Other conversation
   audiences, operators, and the browser cannot approve recall.
 - Claims with `assertion_origin` of `source` or `agent_inference` cannot be
   approved, because external or inferred text is not owner-approved context.

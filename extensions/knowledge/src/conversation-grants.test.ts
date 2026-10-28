@@ -112,11 +112,8 @@ it("an owner grant lets a group read, save, or both in the agent's private knowl
   await f.save(group, "Group decision");
   expect(await f.titles(f.owner)).toStrictEqual(["Group decision", "Owner plan"]);
 
-  // Write-only: saves land in private knowledge; reads stay in the group's own partition.
-  expect((await f.grant(GROUP, "write")).outcome).toBe("applied");
   await f.save(thread, "Thread fact");
-  expect(await f.titles(group)).toStrictEqual(["Group note"]);
-  expect(await f.titles(f.owner)).toStrictEqual(["Group decision", "Owner plan", "Thread fact"]);
+  expect(await f.titles(thread)).toStrictEqual(["Group decision", "Owner plan", "Thread fact"]);
 
   // Revoking restores the group's own partition; nothing else changed along the way.
   expect((await f.grant(GROUP, "none")).outcome).toBe("applied");
@@ -215,7 +212,7 @@ it("conversations granted saves can approve automatic recall; read-only and ungr
       ctx,
     );
   };
-  await expect(recall(f.chat(GROUP))).rejects.toThrow(/owner grant that allows saving/);
+  await expect(recall(f.chat(GROUP))).rejects.toThrow(/owner grant to read and save/);
   await f.grant(GROUP, "read");
   await expect(recall(f.chat(GROUP))).rejects.toThrow(/read-only/);
   await f.grant(GROUP, "read-write");

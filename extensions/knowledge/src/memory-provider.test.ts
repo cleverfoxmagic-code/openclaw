@@ -369,7 +369,7 @@ it("knowledge_recall rejects non-owner authority, unavailable writes and invalid
   f.setAudience(f.conversation);
   await expect(
     f.service.recall({ ...base, set: { summary: "Private context" } }, f.tool),
-  ).rejects.toThrow(/owner grant that allows saving/);
+  ).rejects.toThrow(/owner grant to read and save/);
   f.setAudience({ kind: "owner-private", agentId: "main" });
   const operator: any = {
     source: "session-action",

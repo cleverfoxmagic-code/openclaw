@@ -15,12 +15,10 @@ export type GrantSessions = { rows: GrantSession[]; complete: boolean };
 const ACCESS: [Access, string][] = [
   ["read", "Can read"],
   ["read-write", "Can read and save"],
-  ["write", "Can save only"],
 ];
 const NOTES: Record<Access, string> = {
   read: "Reads private knowledge; can’t save.",
   "read-write": "Reads and saves private knowledge.",
-  write: "Saves to private knowledge; reads only its own conversation’s.",
 };
 
 // A grant also covers keys that extend it with ":" (threads, topics), matching

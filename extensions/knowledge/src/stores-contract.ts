@@ -56,11 +56,7 @@ const AgentEntry = Type.Object(
 );
 type AgentEntry = Static<typeof AgentEntry>;
 
-const grantAccess = Type.Union([
-  Type.Literal("read"),
-  Type.Literal("write"),
-  Type.Literal("read-write"),
-]);
+const grantAccess = Type.Union([Type.Literal("read"), Type.Literal("read-write")]);
 /** What an owner grant lets a conversation do with its agent's private knowledge. */
 export type GrantAccess = Static<typeof grantAccess>;
 const grantSessionKey = Type.String({ pattern: GRANT_SESSION_KEY, maxLength: 512 });

@@ -151,7 +151,7 @@ it("injects the index into conversations an owner granted read access, threads i
   for (const [access, injected] of [
     ["read", true],
     ["read-write", true],
-    ["write", false],
+    ["none", false],
   ] as const) {
     const { grants } = await f.service.stores_snapshot({}, admin);
     const changed = await f.service.stores_grant(

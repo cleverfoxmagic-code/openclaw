@@ -83,8 +83,6 @@ access** (requires `operator.admin`, and the agent within the operator's role):
 
 - **Can read** reads the private partition and cannot save. Saves fail with an
   error, and save guidance is left out of the conversation's prompt.
-- **Can save only** saves to the private partition. Reads stay in the
-  conversation's own partition.
 - **Can read and save** reads and saves the private partition, like an
   owner-direct turn.
 
@@ -96,8 +94,11 @@ Grants are keyed by conversation session key:
 - Read grants also include the
   [Knowledge index](/plugins/knowledge/memory-provider#knowledge-index) and
   automatic recall candidates.
-- Grants that allow saving also allow approving automatic recall with
+- Read-and-save grants also allow approving automatic recall with
   `knowledge_recall`.
+- There is no save-only grant. Saves run against the private partition, and
+  their results would reveal existing private records to a conversation that
+  cannot read them.
 - Saves from a granted conversation are recorded in history with the writing
   agent, like any other save.
 - Grants are Knowledge state kept in `registry.sqlite`, not configuration.
@@ -212,8 +213,8 @@ metadata, or reconstruct spawn lineage. It matches owner grants against the
 audience's session key and re-checks the audience and grants before and after
 asynchronous work.
 
-Agent writes use the same scope mapping as reads, except that a save-only grant
-sends saves to the private partition and a read-only grant refuses them. Operator
+Agent writes use the same scope mapping as reads, except that a read-only grant
+refuses them. Operator
 read access cannot save. Cross-conversation recall, background host access, and operator browsing
 of conversation partitions are not exposed.
 

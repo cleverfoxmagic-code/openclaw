@@ -383,7 +383,7 @@ export function createKnowledgeService(
           !toolGrant(context, stores.grantFor)
         ) {
           throw new Error(
-            "Automatic recall approval requires the owner's private memory audience or an owner grant that allows saving to private knowledge.",
+            "Automatic recall approval requires the owner's private memory audience or an owner grant to read and save private knowledge.",
           );
         }
         return use(context, true, (runtime, access) =>

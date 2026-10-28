@@ -125,12 +125,15 @@ function audiencePrincipal(
   if (audience.kind === "owner-private") {
     return { agentId: audience.agentId, scope: { visibility: "private" } };
   }
+  // Every grant reads the private partition; only read-write also saves there.
+  // There is no write-only grant: saves run against the private partition, so
+  // their results would reveal private records to a conversation that cannot read.
   const grant = grants(audience.sessionKey);
-  if (grant === "read-write" || grant === (write ? "write" : "read")) {
-    return { agentId: audience.agentId, scope: { visibility: "private" } };
-  }
-  if (write && grant === "read") {
+  if (grant && write && grant !== "read-write") {
     throw readOnly();
+  }
+  if (grant) {
+    return { agentId: audience.agentId, scope: { visibility: "private" } };
   }
   return {
     agentId: audience.agentId,

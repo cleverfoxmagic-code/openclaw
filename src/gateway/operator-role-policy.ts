@@ -355,6 +355,9 @@ export function assertOperatorCloudProfileDispatchAllowed(params: {
     }
   }
   throw new SessionMutationAuthorizationChangedError(
-    errorShape(ErrorCodes.FORBIDDEN, "Your operator role cannot dispatch to this cloud profile."),
+    errorShape(
+      ErrorCodes.FORBIDDEN,
+      "Your operator role cannot dispatch to this cloud profile; choose your own session and an allowed profile, or ask a gateway administrator to update your role.",
+    ),
   );
 }

@@ -86,12 +86,34 @@ it("omits the index for conversation, missing and sandboxed audiences and revoke
   await f.save("Private page title");
   const hook = f.hooks.before_prompt_build;
   const event = { prompt: "hi", messages: [] };
-  const conversation = { kind: "conversation", agentId: "main", sessionId: f.sessionId };
+  const conversation = f.conversation;
   expect(await hook(event, hookContext(f, { memoryAudience: conversation }))).toBeUndefined();
   expect(await hook(event, hookContext(f, { memoryAudience: undefined }))).toBeUndefined();
   expect(await hook(event, hookContext(f, { sandboxed: true }))).toBeUndefined();
   f.revoke();
   expect(await hook(event, hookContext(f))).toBeUndefined();
+});
+
+it("injects the index into conversations an owner granted read access, threads included", async () => {
+  const f = await memoryFixture(tempDirs);
+  await f.save("Private page title");
+  const hook = f.hooks.before_prompt_build;
+  const event = { prompt: "hi", messages: [] };
+  const thread = { ...f.conversation, sessionKey: `${f.conversation.sessionKey}:thread:7` };
+  // The fixture host's config is live and mutable; the SDK types it read-only.
+  const config = f.api.runtime.config.current().plugins!.entries!.knowledge!.config as Record<
+    string,
+    unknown
+  >;
+  for (const [access, injected] of [
+    ["read", true],
+    ["read-write", true],
+    ["write", false],
+  ] as const) {
+    config.conversationGrants = { [f.conversation.sessionKey]: access };
+    const result = await hook(event, hookContext(f, { memoryAudience: thread }));
+    expect(result?.appendSystemContext?.includes("Private page title") ?? false).toBe(injected);
+  }
 });
 
 it("uses the first retained message timestamp, never a later one", () => {

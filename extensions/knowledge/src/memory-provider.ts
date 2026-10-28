@@ -44,7 +44,7 @@ export function createKnowledgeMemoryRuntime(stores: Stores): MemoryProviderRunt
       // A lease keeps the principal and service incarnation it was opened with.
       const incarnation = stores.incarnation,
         pinned = pinPrincipal(
-          memoryPrincipal(context, agentId, stores.policy.operatorRead, purpose),
+          memoryPrincipal(context, agentId, stores.policy.operatorRead, purpose, stores.grantFor),
         );
       // Host readiness leases may validate storage but never release its content.
       const assertContentAccess = () => {
@@ -278,8 +278,10 @@ export function createKnowledgeMemoryRuntime(stores: Stores): MemoryProviderRunt
                     warning: "Automatic recall uses only owner-approved private records.",
                   };
                 }
-                if (!pinned.principal.ownerPrivate) {
-                  throw new Error("Automatic recall requires an owner-private memory audience.");
+                if (!pinned.principal.sessionPrivate) {
+                  throw new Error(
+                    "Automatic recall requires an owner-private memory audience or an owner read grant.",
+                  );
                 }
                 if (request.kind !== "trigger" && request.kind !== "project") {
                   throw new Error("Knowledge candidates kind must be trigger or project.");

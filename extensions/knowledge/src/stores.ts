@@ -1,6 +1,7 @@
 import path from "node:path";
 import { listAgentIds, tryResolveDefaultAgentId } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { Check } from "typebox/value";
 import {
   maintenancePrincipal,
   pinPrincipal,
@@ -13,12 +14,16 @@ import { KnowledgeRestartError } from "./restart-error.js";
 import { bindingState, type RegistrySnapshot } from "./store-registry.js";
 import { StoreRuntime } from "./store-runtime.js";
 import {
+  ConversationGrants,
   agentIdPattern,
   canonicalJson,
   effectiveBinding,
+  coveringGrant,
   parseMembership,
+  readGrantsSection,
   readStoresSection,
   storesRevision,
+  type GrantAccess,
   type Membership,
   type Policy,
 } from "./stores-config.js";
@@ -38,6 +43,8 @@ export type Opened =
   | { kind: "ready"; runtime: StoreRuntime; access: VaultAccess; binding: string }
   | { kind: Exclude<StoreState, "ready">; agentId: string; binding?: string; message: string };
 type Host = Pick<OpenClawPluginApi, "runtime">;
+/** Validated grants with the revision operators edit against. */
+export type Grants = { revision: string; section: ConversationGrants; issue?: string };
 
 /** Main-thread owner of store resolution (spec §5, §6). Membership comes from
  * the registry's reconciled copy of configuration; physical stores come from
@@ -48,6 +55,10 @@ export class Stores {
   private readonly provisioning = new Map<string, Promise<RegistrySnapshot>>();
   private readonly fenced = new Set<string>();
   private memo?: Membership;
+  private grantsMemo?: { raw: unknown; grants: Grants };
+  // Grants this process last wrote, served while config.current() still reports
+  // a section one of its unpublished writes replaced (see expectGrantsLag).
+  private wroteGrants?: { replaced: Set<string>; grants: Grants };
   private syncing?: Promise<void>;
   // Revisions config.current() may report until the host publishes our write.
   private readonly lagging = new Set<string>();
@@ -87,6 +98,54 @@ export class Stores {
       this.memo = parseMembership(reconciled ? JSON.parse(reconciled.section) : {});
     }
     return this.memo;
+  }
+  /** Owner conversation grants, read live from configuration. They need no
+   * registry reconciliation: a grant selects a partition of an agent's own
+   * store, never a physical store, and every principal re-resolves it at each
+   * live check. An invalid section grants nothing and is reported in settings. */
+  grants(): Grants {
+    const raw = readGrantsSection(this.hostConfig());
+    let memo = this.grantsMemo;
+    if (!memo || memo.raw !== raw) {
+      const valid = Check(ConversationGrants, raw);
+      memo = this.grantsMemo = {
+        raw,
+        grants: {
+          revision: storesRevision(raw),
+          section: valid ? raw : {},
+          ...(valid
+            ? {}
+            : {
+                issue:
+                  "The conversation grants configuration is invalid; no conversation has access to private knowledge until it is repaired.",
+              }),
+        },
+      };
+    }
+    const current = memo.grants;
+    if (this.wroteGrants) {
+      // Published (or edited elsewhere): configuration is authoritative again.
+      if (
+        current.revision !== this.wroteGrants.grants.revision &&
+        this.wroteGrants.replaced.has(current.revision)
+      ) {
+        return this.wroteGrants.grants;
+      }
+      this.wroteGrants = undefined;
+    }
+    return current;
+  }
+  /** The grant covering a conversation session key (bound for passing as a lookup). */
+  readonly grantFor = (sessionKey: string): GrantAccess | undefined =>
+    coveringGrant(this.grants().section, sessionKey);
+  /** Right after this plugin writes grants, config.current() can still report
+   * any section its unpublished writes replaced; serve the latest written grants
+   * until it reports something else, so a revocation takes effect when its
+   * write resolves, including across consecutive edits. */
+  expectGrantsLag(before: string, section: ConversationGrants) {
+    const replaced = this.wroteGrants?.replaced ?? new Set<string>();
+    replaced.add(before);
+    this.wroteGrants = { replaced, grants: { revision: storesRevision(section), section } };
   }
   /** Physical store currently serving an agent, if any. */
   vaultFor(agentId: string): string | undefined {

@@ -69,6 +69,7 @@ import { withSearchDetail } from "./search-detail.js";
 import { SessionActivityInput, SessionActivityOutput } from "./session-activity.js";
 import {
   AgentProxyInput,
+  GrantChangeInput,
   StoreState,
   StoresChangeInput,
   StoresChangeOutput,
@@ -539,6 +540,13 @@ export const contract = defineFeatureContract({
       description:
         "Operator settings: change one agent's store assignment (share its store, use a shared store, or use its own). Requires operator admin access and the current settings revision.",
       input: StoresChangeInput,
+      output: StoresChangeOutput,
+    },
+    stores_grant: {
+      kind: "action",
+      description:
+        "Operator settings: grant, change or revoke one conversation's read, write or read-write access to its agent's private knowledge. Requires operator admin access and the current grants revision.",
+      input: GrantChangeInput,
       output: StoresChangeOutput,
     },
     stores_change_status: {

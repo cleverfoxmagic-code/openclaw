@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
-import { AGENT_ID, STORE_KEY } from "./stores-contract.js";
+import { AGENT_ID, GRANT_SESSION_KEY, STORE_KEY } from "./stores-contract.js";
 export const agentIdPattern = new RegExp(AGENT_ID);
 const storeKeyPattern = new RegExp(STORE_KEY);
 
@@ -18,13 +18,29 @@ export const StoresSection = Type.Record(Type.String({ pattern: STORE_KEY }), Na
 });
 export type StoresSection = Static<typeof StoresSection>;
 
-/** Authored plugin configuration. Membership is the only per-agent setting;
- * everything else is a plugin-wide gate. */
+/** What an owner grant lets a conversation do with its agent's private knowledge. */
+export const GrantAccess = Type.Union([
+  Type.Literal("read"),
+  Type.Literal("write"),
+  Type.Literal("read-write"),
+]);
+export type GrantAccess = Static<typeof GrantAccess>;
+/** Owner grants keyed by a conversation's stable session key. */
+export const ConversationGrants = Type.Record(
+  Type.String({ pattern: GRANT_SESSION_KEY, maxLength: 512 }),
+  GrantAccess,
+  { additionalProperties: false, maxProperties: 500 },
+);
+export type ConversationGrants = Static<typeof ConversationGrants>;
+
+/** Authored plugin configuration. Membership and conversation grants are the
+ * per-agent settings; everything else is a plugin-wide gate. */
 export const PluginConfig = Type.Object(
   {
     operatorRead: Type.Optional(Type.Boolean()),
     writesEnabled: Type.Optional(Type.Boolean()),
     stores: Type.Optional(StoresSection),
+    conversationGrants: Type.Optional(ConversationGrants),
     maintenance: Type.Optional(
       Type.Object(
         {
@@ -73,6 +89,14 @@ const DEFAULT_MAINTENANCE_SCHEDULE = "30 3 * * *";
 
 /** Config path owned by the no-reload rule and every membership write. */
 export const STORES_CONFIG_PATH = ["plugins", "entries", "knowledge", "config", "stores"] as const;
+/** Config path owned by the no-reload rule and every grant write. */
+export const GRANTS_CONFIG_PATH = [
+  "plugins",
+  "entries",
+  "knowledge",
+  "config",
+  "conversationGrants",
+] as const;
 
 /** Plugin-wide gates. All default on so a fresh install works without authoring config. */
 export function parsePolicy(config: Record<string, unknown> | undefined): Policy {
@@ -94,15 +118,25 @@ export function parsePolicy(config: Record<string, unknown> | undefined): Policy
 
 /** Read the authored `stores` section out of a full host config snapshot. */
 export function readStoresSection(hostConfig: unknown): unknown {
+  return readSection(hostConfig, STORES_CONFIG_PATH);
+}
+const NO_GRANTS = Object.freeze({});
+/** Read the authored `conversationGrants` section out of a full host config
+ * snapshot. An absent section is one shared empty object, so callers can memo
+ * on identity. */
+export function readGrantsSection(hostConfig: unknown): unknown {
+  return readSection(hostConfig, GRANTS_CONFIG_PATH, NO_GRANTS);
+}
+function readSection(hostConfig: unknown, path: readonly string[], empty: object = {}): unknown {
   let node: unknown = hostConfig;
-  for (const key of STORES_CONFIG_PATH) {
+  for (const key of path) {
     if (!node || typeof node !== "object") {
-      return {};
+      return empty;
     }
     // SAFETY: node is a non-null object (checked above); an absent key reads undefined.
     node = (node as Record<string, unknown>)[key];
   }
-  return node ?? {};
+  return node ?? empty;
 }
 
 // Key-sorted JSON so equal sections always hash equally.
@@ -191,4 +225,25 @@ export function effectiveBinding(membership: Membership, agentId: string): Bindi
   }
   const key = membership.assigned.get(agentId);
   return key === undefined ? `agent:${agentId}` : `named:${key}`;
+}
+
+/** The grant covering a conversation: its own key's, else the nearest
+ * `:`-delimited ancestor's. Thread, topic and other key-denoted child sessions
+ * extend their conversation's key, so they inherit its grant; a more specific
+ * grant wins. Session keys are read as structure only, never as authority: the
+ * key comes from the host-minted audience. */
+export function coveringGrant(
+  grants: ConversationGrants,
+  sessionKey: string,
+): GrantAccess | undefined {
+  for (let key = sessionKey; ;) {
+    if (Object.hasOwn(grants, key)) {
+      return grants[key];
+    }
+    const at = key.lastIndexOf(":");
+    if (at <= 0) {
+      return undefined;
+    }
+    key = key.slice(0, at);
+  }
 }

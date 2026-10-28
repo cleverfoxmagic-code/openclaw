@@ -1,4 +1,5 @@
 import { createChangeListeners } from "../../../src/shared/listeners.ts";
+import { listen } from "./reactive/listener.ts";
 
 // Phones and tablets without a trackpad report this; desktops and touch laptops do not.
 const TOUCH_ONLY_QUERY = "(any-hover: none) and (any-pointer: coarse)";
@@ -47,17 +48,19 @@ export function isHardwareKeyboardEvent(event: KeyboardEvent): boolean {
 }
 
 export function installKeyboardHints(view: Window = window): void {
-  touchOnly?.addEventListener("change", changes.publish);
-  const detection = new AbortController();
-  view.addEventListener(
+  if (touchOnly) {
+    listen(touchOnly, "change", changes.publish);
+  }
+  const stop = listen(
+    view,
     "keydown",
     (event) => {
       if (isHardwareKeyboardEvent(event)) {
         hardwareKeyboard = true;
-        detection.abort();
+        stop();
         changes.publish();
       }
     },
-    { capture: true, signal: detection.signal },
+    true,
   );
 }

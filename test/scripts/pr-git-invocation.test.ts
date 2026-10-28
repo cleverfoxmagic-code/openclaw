@@ -124,6 +124,208 @@ process.exit(result.status ?? 1);
       await expect(failure).rejects.toMatchObject({ status: 73 });
     },
   );
+  it.skipIf(process.platform !== "darwin")(
+    "uses actual native GH with the selected policy for offline lookup in each child cwd",
+    async () => {
+      const root = tempDirs.make("openclaw-pr-posix-native-gh-");
+      const env = createIndependentPrFixtureEnv();
+      for (const key of Object.keys(env)) {
+        if (
+          /^(?:GH_|GITHUB_|GIT_|GCM_|OPENCLAW_PR_)/i.test(key) ||
+          ["openclaw_gh_bin", "home", "xdg_config_home", "godebug"].includes(key.toLowerCase())
+        ) {
+          delete env[key];
+        }
+      }
+      const home = join(root, "home"),
+        ghConfig = join(root, "gh-config");
+      for (const path of [home, ghConfig]) {
+        mkdirSync(path);
+      }
+      const globalConfig = join(home, ".gitconfig");
+      writeFileSync(globalConfig, "[credential]\n\thelper =\n");
+      writeFileSync(join(ghConfig, "config.yml"), "git_protocol: https\nprompt: disabled\n");
+      writeFileSync(join(ghConfig, "hosts.yml"), "{}\n");
+      Object.assign(env, {
+        HOME: home,
+        XDG_CONFIG_HOME: home,
+        GH_CONFIG_DIR: ghConfig,
+        GH_HOST: "github.com",
+        GH_TOKEN: "fixture-token-not-a-credential",
+        GH_PROMPT_DISABLED: "1",
+        GH_NO_UPDATE_NOTIFIER: "1",
+        GH_NO_EXTENSION_UPDATE_NOTIFIER: "1",
+        GH_TELEMETRY: "disabled",
+        DO_NOT_TRACK: "1",
+        GIT_CONFIG_GLOBAL: globalConfig,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_TERMINAL_PROMPT: "0",
+      });
+      const nativeTool = (name: "gh" | "git") => {
+        const found = spawnSync("/bin/sh", ["-c", 'command -v "$1"', "lookup", name], {
+          cwd: root,
+          env,
+          encoding: "utf8",
+          timeout: 10_000,
+        });
+        expect(found.status, `actual native ${name} is required: ${found.stderr}`).toBe(0);
+        const path = realpathSync(found.stdout.trim());
+        expect(statSync(path).isFile()).toBe(true);
+        const binary = readFileSync(path);
+        expect(binary.subarray(0, 2).toString()).not.toBe("#!");
+        const version = spawnSync(path, ["--version"], {
+          cwd: root,
+          env,
+          encoding: "utf8",
+          timeout: 10_000,
+        });
+        expect(version.status, version.stderr).toBe(0);
+        expect(version.stdout).toMatch(
+          name === "gh" ? /^gh version \d+\.\d+\.\d+/ : /^git version /,
+        );
+        console.info(
+          "native POSIX tool identity",
+          JSON.stringify({
+            tool: name,
+            path,
+            version: version.stdout.trim(),
+            sha256: createHash("sha256").update(binary).digest("hex"),
+          }),
+        );
+        return path;
+      };
+      const gh = nativeTool("gh"),
+        git = nativeTool("git");
+      const calls = join(root, "policy-calls"),
+        denial = join(root, "policy-denied");
+      const selected = join(root, "selected git'policy");
+      const node = requireNodeTool("node");
+      writeFileSync(
+        selected,
+        `#!${node}
+const fs = require("node:fs");
+const record = { args: process.argv.slice(2), cwd: process.cwd(), policy: process.env.GIT_CONFIG_PARAMETERS, depth: Number(process.env.PR_TEST_GIT_DEPTH || 0) + 1 };
+fs.appendFileSync(process.env.PR_TEST_GIT_CALLS, JSON.stringify(record) + "\\n");
+if (process.env.PR_TEST_GIT_DENY === "1") {
+  fs.appendFileSync(process.env.PR_TEST_GIT_DENIAL, JSON.stringify(record) + "\\n");
+  console.error("selected Git policy refused");
+  process.exit(73);
+}
+const child = require("node:child_process").spawnSync(process.env.PR_TEST_NATIVE_GIT, process.argv.slice(2), { stdio: "inherit" });
+if (child.error) throw child.error;
+process.exit(child.status ?? 1);
+`,
+        { mode: 0o755 },
+      );
+      Object.assign(env, {
+        OPENCLAW_GH_BIN: gh,
+        OPENCLAW_PR_GIT: selected,
+        GIT_EXEC: selected,
+        PR_TEST_NATIVE_GIT: git,
+        PR_TEST_GIT_CALLS: calls,
+        PR_TEST_GIT_DENIAL: denial,
+        PR_TEST_GIT_DEPTH: "0",
+        GIT_CONFIG_PARAMETERS: "'fixture.policy=preserved'",
+      });
+      const repositories = [
+        { cwd: join(root, "first"), name: "fixture-one/alpha" },
+        { cwd: join(root, "second"), name: "fixture-two/beta" },
+      ];
+      const cwdBypass = join(root, "cwd-git-started");
+      for (const { cwd, name } of repositories) {
+        mkdirSync(cwd);
+        for (const args of [
+          ["init", "--template="],
+          ["remote", "add", "origin", `https://github.com/${name}.git`],
+          ["config", "remote.origin.gh-resolved", "base"],
+        ]) {
+          const result = spawnSync(git, args, { cwd, env, encoding: "utf8", timeout: 10_000 });
+          expect(result.status, result.stderr).toBe(0);
+        }
+        writeFileSync(
+          join(cwd, "git"),
+          `#!${node}
+require("node:fs").writeFileSync(${JSON.stringify(cwdBypass)}, "unexpected cwd Git");
+process.exit(99);
+`,
+          { mode: 0o755 },
+        );
+      }
+      const configPaths = [
+        globalConfig,
+        join(ghConfig, "config.yml"),
+        join(ghConfig, "hosts.yml"),
+        ...repositories.map(({ cwd }) => join(cwd, ".git", "config")),
+      ];
+      const before = configPaths.map((path) => readFileSync(path));
+      const beforeNames = readdirSync(ghConfig).toSorted();
+      const readCalls = () =>
+        existsSync(calls)
+          ? readFileSync(calls, "utf8")
+              .trim()
+              .split("\n")
+              .map((line) => JSON.parse(line))
+          : [];
+      // GH's local --view path returns before HTTP construction; the real policy
+      // receipt proves native GH reached the selected executable in both modes.
+      for (const { cwd, name } of repositories) {
+        for (const asynchronous of [false, true]) {
+          const count = readCalls().length;
+          const options = { cwd, env, encoding: "utf8" as const, timeout: 10_000 };
+          const result = asynchronous
+            ? await execPrGhAsync(["repo", "set-default", "--view"], options, "plain")
+            : execPrGh(["repo", "set-default", "--view"], options, "plain");
+          expect(String(result).trim()).toBe(name);
+          const observed = readCalls().slice(count);
+          expect(observed.length).toBeGreaterThan(0);
+          for (const record of observed) {
+            expect(record).toMatchObject({ cwd, policy: "'fixture.policy=preserved'", depth: 1 });
+          }
+        }
+      }
+      for (const { cwd } of repositories) {
+        for (const asynchronous of [false, true]) {
+          const count = readCalls().length;
+          const options = {
+            cwd,
+            env: { ...env, PR_TEST_GIT_DENY: "1" },
+            encoding: "utf8" as const,
+            timeout: 10_000,
+          };
+          const task = Promise.resolve().then(() =>
+            asynchronous
+              ? execPrGhAsync(["repo", "set-default", "--view"], options, "plain")
+              : execPrGh(["repo", "set-default", "--view"], options, "plain"),
+          );
+          const failure = await task.then(
+            () => undefined,
+            (error: { status: number }) => error,
+          );
+          expect(failure).toMatchObject({ status: expect.any(Number) });
+          expect(failure?.status).not.toBe(0);
+          const observed = readCalls().slice(count);
+          expect(observed.length).toBeGreaterThan(0);
+          expect(observed.every((record) => record.cwd === cwd && record.depth === 1)).toBe(true);
+        }
+      }
+      expect(readFileSync(denial, "utf8").trim().split("\n")).toHaveLength(4);
+      expect(existsSync(cwdBypass)).toBe(false);
+      configPaths.forEach((path, index) => expect(readFileSync(path)).toEqual(before[index]));
+      expect(readdirSync(ghConfig).toSorted()).toEqual(beforeNames);
+      console.info(
+        "native POSIX GH selected-policy proof",
+        JSON.stringify({
+          cwdCases: 2,
+          modes: ["sync", "async"],
+          allowed: 4,
+          denied: 4,
+          configUnchanged: true,
+          cwdGitStarted: false,
+        }),
+      );
+    },
+    30_000,
+  );
 });
 
 const describeWindows = process.platform === "win32" ? describe : describe.skip;

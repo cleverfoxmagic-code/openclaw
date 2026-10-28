@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe } from "vitest";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
+import { makeStoredZip } from "./actions-artifact-zip.test-support.js";
 import { createMacScriptTest } from "./mac-script-fixture.test-support.js";
 
 const it = createMacScriptTest();
@@ -19,19 +20,16 @@ describe.runIf(process.platform === "darwin")("bundled SQLite library", () => {
           await mkdir(path.dirname(at(file)), { recursive: true });
           await writeFile(at(file), data, { mode });
         };
-        // Compile an inert library through the real builder without downloading upstream code.
-        await write(
-          "sqlite-amalgamation-3530400/sqlite3.c",
-          'const char *sqlite3_libversion(void) { return "fixture"; }\n',
-        );
         const archive = at("apps/macos/.build/sqlite/3.53.4/sqlite-amalgamation-3530400.zip");
         await mkdir(path.dirname(archive), { recursive: true });
-        const zipped = await mac.run(
-          "/usr/bin/zip",
-          ["-q", archive, "sqlite-amalgamation-3530400/sqlite3.c"],
-          { cwd: root },
+        // Compile an inert library through the real builder without downloading upstream code.
+        await writeFile(
+          archive,
+          makeStoredZip({
+            "sqlite-amalgamation-3530400/sqlite3.c":
+              'const char *sqlite3_libversion(void) { return "fixture"; }\n',
+          }),
         );
-        expect(zipped.status).toBe(0);
         await write(
           "scripts/lib/sqlite-macos.json",
           JSON.stringify({

@@ -484,8 +484,18 @@ self.addEventListener("fetch", (event) => {
       pathname.startsWith("/chat/") &&
       pathname !== "/chat/" &&
       navigationKeys.length <= 1 &&
-      // eslint-disable-next-line no-control-regex -- Reject decoded ASCII controls in the navigation hint.
-      navigationKeys.every((key) => key.trim() && !/[\u0000-\u001f\u007f]/u.test(key)) &&
+      navigationKeys.every((key) => {
+        if (!key.trim()) {
+          return false;
+        }
+        for (let index = 0; index < key.length; index += 1) {
+          const code = key.charCodeAt(index);
+          if (code <= 0x1f || code === 0x7f) {
+            return false;
+          }
+        }
+        return true;
+      }) &&
       composerFocus.length <= 1 &&
       composerFocus.every((value) => value === "1") &&
       [...url.searchParams.keys()].every(

@@ -163,6 +163,7 @@ describe("operator browser chat document navigation", () => {
     ["/chat/main?__openclawSessionKey=", true],
     ["/chat/main?__openclawSessionKey=+%20", true],
     ["/chat/main?__openclawSessionKey=agent%3Amain%3Aa%00", true],
+    ["/chat/main?__openclawSessionKey=agent%3Amain%3Aa%1F", true],
     ["/chat/main?__openclawSessionKey=agent%3Amain%3Aa%7F", true],
     ["/chat/main?__openclawSessionKey=agent%3Amain%3Aa&token=secret", true],
     ["/chat/main?__openclawSessionKey=agent%3Amain%3Aa&unknown=value", true],

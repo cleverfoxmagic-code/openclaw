@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
+import { makeStoredZip } from "./actions-artifact-zip.test-support.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const read = (file: string) => readFileSync(file, "utf8");
@@ -31,7 +32,6 @@ function makeFixture(version?: string) {
   const root = tempDirs.make("openclaw-native-tool-installer-");
   const file = (name: string) => path.join(root, name);
   const binDir = file("bin");
-  const bundleDir = file("bundle");
   const installDir = file("install directory");
   const archive = file("periphery.zip");
   const stub = (name: string, lines: string[]) => writeExecutable(path.join(binDir, name), lines);
@@ -42,16 +42,23 @@ function makeFixture(version?: string) {
   };
   mkdirSync(binDir);
   if (version !== undefined) {
-    mkdirSync(bundleDir);
-    writeExecutable(path.join(bundleDir, "periphery"), [
-      'printf "%s\\n" "$0" "$@" >>"$TMPDIR/periphery-calls.txt"',
-      '[[ "$#" -eq 1 && "$1" == "version" ]]',
-      '[[ -f "$(dirname "$0")/libIndexStore.dylib" ]]',
-      `printf "%s\\n" "${version}"`,
-    ]);
-    writeFileSync(path.join(bundleDir, "libIndexStore.dylib"), "fixture index store\n");
-    writeFileSync(path.join(bundleDir, "LICENSE.md"), "fixture license\n");
-    exec("zip", ["-q", archive, "periphery", "libIndexStore.dylib", "LICENSE.md"], bundleDir);
+    // The installer assigns executable permissions; ZIP modes are not part of this fixture.
+    writeFileSync(
+      archive,
+      makeStoredZip({
+        periphery: [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'printf "%s\\n" "$0" "$@" >>"$TMPDIR/periphery-calls.txt"',
+          '[[ "$#" -eq 1 && "$1" == "version" ]]',
+          '[[ -f "$(dirname "$0")/libIndexStore.dylib" ]]',
+          `printf "%s\\n" "${version}"`,
+          "",
+        ].join("\n"),
+        "libIndexStore.dylib": "fixture index store\n",
+        "LICENSE.md": "fixture license\n",
+      }),
+    );
     stub("curl", [
       'while [[ "$#" -gt 0 ]]; do',
       '  case "$1" in',

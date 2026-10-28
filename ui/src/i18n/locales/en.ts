@@ -9,6 +9,7 @@ type EnglishCatalog = TranslationMap & {
   execApproval: TranslationMap & { labels: TranslationMap; scope: TranslationMap };
   sessionProgressCard: TranslationMap & {
     refresh: TranslationMap;
+    runtime: TranslationMap;
     activity: TranslationMap;
     outcome: TranslationMap;
     status: TranslationMap;
@@ -340,8 +341,7 @@ type EnglishCatalog = TranslationMap & {
       | "forkedSession"
       | "archiveSession"
       | "restoreSession"
-      | "deleteSessionStale"
-      | "deleteSessionsStale"
+      | "deleteSessionIdentityMissing"
       | "groupMenu"
       | "groupOptions"
       | "newSessionInGroup"
@@ -363,8 +363,8 @@ const startupEnglish = {
       "This view is unavailable. Check that its plugin is installed, enabled, and allowed for your account. Reload the conversation after installing or updating the plugin.",
     dashboardTitle: "Session dashboard",
     customPluginsDisabled: "Custom plugin UI is off",
-    customPluginsEnableHint: "Enable Custom plugin UI in Labs.",
-    openLabs: "Open Labs",
+    customPluginsEnableHint:
+      "Disabled by the Gateway configuration. An administrator can enable native plugin UI.",
     surface: {},
   },
   capacityMeter: {},
@@ -521,6 +521,7 @@ const startupEnglish = {
     checks: {},
   },
   sessionProgressCard: {
+    runtime: {},
     composerTitle: "Task progress",
 
     clearFailed: "Could not clear saved progress card.",
@@ -792,9 +793,10 @@ const startupEnglish = {
     forkedSession: "Forked session",
     archiveSession: "Archive session",
     restoreSession: "Restore session",
-    deleteSessionStale: 'Gateway connection replaced before "{session}" was deleted. Try again.',
-    deleteSessionsStale:
-      "Gateway connection replaced before {count} sessions were deleted. Try again.",
+    deleteSessionStale: {},
+    deleteSessionIdentityMissing:
+      'Cannot queue deletion of "{session}" without its session identity. Refresh after reconnecting and try again.',
+    deleteSessionsStale: {},
     groupMenu: "Group options for {group}",
     groupOptions: "Group options",
     newSessionInGroup: "New session in {group}",
@@ -904,7 +906,7 @@ const startupEnglish = {
     agentPendingOne: "{count} pending approval",
     agentPending: "{count} pending approvals",
 
-    reviewOnly: "Review only. Sign in with approval access to record a decision.",
+    reviewOnly: "You don’t have permission to approve.",
 
     labels: {},
   },
@@ -1198,8 +1200,6 @@ const startupEnglish = {
     },
     toolSearch: {},
 
-    customPluginUi: {},
-
     hostDesktop: {},
     workerDesktop: {},
   },
@@ -1231,6 +1231,13 @@ const startupEnglish = {
       running: "Running sessions",
       total: "Total sessions",
       name: "Name",
+    },
+    menu: {
+      label: "Actions for {name}",
+      pin: "Pin to sidebar",
+      unpin: "Unpin from sidebar",
+      openNewTab: "Open activity in new tab",
+      copyLink: "Copy activity link",
     },
     active: "Active",
     onlineActive: "Online · Active",
@@ -1426,30 +1433,7 @@ const startupEnglish = {
       less: "Less",
       more: "More",
     },
-    providerUsage: {
-      title: "Provider plans & billing",
-      subtitle: "Live plan, quota, balance, and budget data reported by configured providers.",
-      stalled: "Provider usage did not finish loading. Refresh to retry.",
-      unavailable: "Provider usage is unavailable; the last request failed. Refresh to retry.",
-      balance: "Balance",
-      spend: "Usage",
-      budget: "Budget",
-      today: "Today",
-      last7Days: "7 days",
-      lastDays: "{count} days",
-      dailyCost: "Daily provider cost",
-      requests: "{count} requests",
-      inputTokens: "{count} input",
-      cacheTokens: "{count} cache",
-      outputTokens: "{count} output",
-      topModels: "Top models",
-      costCategories: "Cost categories",
-      remaining: "{percent}% left",
-      resets: "Resets {date}",
-      exhausted: "{label} is used up.",
-      checkFailed: "Check failed",
-      exhaustedUntil: "{label} is used up until {date}.",
-    },
+    providerUsage: {},
     presets: {},
     scope: {},
     filters: {},
@@ -1564,6 +1548,7 @@ const startupEnglish = {
       retryingIn: "Retrying in {seconds}s",
       tryingFallback: "Trying fallback model…",
       failedTitle: "Unable to finish this reply",
+      failedRepeatCount: "{count} times",
       failedHelp: "Automatic recovery has stopped. Check any completed work before trying again.",
       tryAgain: "Try again",
       continuePrompt:
@@ -1586,8 +1571,20 @@ const startupEnglish = {
     waitingForApproval: "Waiting for approval…",
     waitingOnSubagents: "Waiting on subagents",
     waitingForMessage: "Waiting for a message",
-    turnElapsed: "Total time since your message, including subagent waits",
     waitingOnSubagent: "Waiting on {name}",
+    waitingOnSessions: "Waiting on {count} sessions",
+    sessionsNeedInputOne: "1 needs your input",
+    sessionsNeedInput: "{count} need your input",
+    handoffResumed: "Resumed · {duration} later",
+    handoffSessionsOne: "1 session",
+    handoffSessions: "{count} sessions",
+    handoffSessionStatus: {
+      attention: "Needs your input",
+      running: "Running",
+      failed: "Failed",
+      stopped: "Stopped",
+      done: "Done",
+    },
     subagentsRunning: "{count} subagents running",
     subagentsRunningOne: "1 subagent running",
     startupStatus: {
@@ -1601,7 +1598,7 @@ const startupEnglish = {
       preparingCloudEnvironment: "Preparing cloud environment…",
       savingSnapshot: "Saving snapshot…",
       preparingContext: "Preparing this turn…",
-      waitingForTurn: "Waiting for turn to start…",
+      waitingForTurn: "Waiting for turn to start",
       memoryFlushing: "Saving conversation memory…",
       startingModel: "Waiting for a response",
       waitingForLocalModel: "Waiting for the local model to respond",
@@ -1654,6 +1651,9 @@ const startupEnglish = {
     },
     sessionHeader: {},
     board: {},
+    codexSupervisionDisabled:
+      "Codex supervision is off. Enable it in plugin settings to continue this session.",
+    openCodexSettings: "Open settings",
     catalog: {},
     taskSuggestions: {},
     pullRequests: {
@@ -1791,7 +1791,6 @@ const startupEnglish = {
       menuFilters: "Filters",
       menuDisplay: "Display",
       hideEmpty: "Hide empty",
-      activeFilterCount: "Active filters: {count}",
       sortSessions: "Filter & sort",
       sessionSources: "Session sources",
       showAllSessions: "Show all sessions",
@@ -1850,6 +1849,8 @@ const startupEnglish = {
       close: "Close {panel}",
     },
     sidePanel: {
+      context: "Context",
+      contextEmpty: "Send a message to capture context usage.",
       label: "Side panel",
       quickAccess: "Quick access",
       explorePanels: "Explore panels",

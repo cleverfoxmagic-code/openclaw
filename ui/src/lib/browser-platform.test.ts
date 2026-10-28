@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { afterEach, expect, it, vi } from "vitest";
-import { isMobileBrowserPlatform } from "./browser-platform.ts";
+import { isMobileBrowserPlatform, keepMobileReturnNative } from "./browser-platform.ts";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -25,3 +25,14 @@ it.each([
     expect(isMobileBrowserPlatform()).toBe(mobile);
   },
 );
+
+it("keeps mobile Return native but lets hardware ⌘/Ctrl+Return reach shortcuts", () => {
+  vi.stubGlobal("navigator", { userAgent: "iPhone", platform: "iPhone", maxTouchPoints: 5 });
+  expect(keepMobileReturnNative(new KeyboardEvent("keydown", { key: "Enter" }))).toBe(true);
+  expect(
+    keepMobileReturnNative(new KeyboardEvent("keydown", { key: "Enter", metaKey: true })),
+  ).toBe(false);
+  expect(
+    keepMobileReturnNative(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true })),
+  ).toBe(false);
+});

@@ -50,17 +50,12 @@ it.each([
   expect(dialog.querySelector("openclaw-modal-dialog")).toBeNull();
 });
 
-it("keeps mobile Return for a new line and omits submission shortcuts", async () => {
+it("keeps mobile Return for a new line and lists hardware Ctrl+Return submissions", async () => {
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Android");
   vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux armv8l");
   const dialog = makeDialog();
-  dialog.sendShortcut = "modifier-enter";
   await openDialog(dialog);
   expect(chips(dialog, "Insert new line")).toEqual(["Enter"]);
-  const labels = Array.from(
-    dialog.querySelectorAll(".shortcut-row > span:first-child"),
-    (label) => label.textContent,
-  );
   for (const label of [
     "Send message",
     "Start a background session (in the command palette)",
@@ -68,8 +63,9 @@ it("keeps mobile Return for a new line and omits submission shortcuts", async ()
     "Steer active response",
     "Save queued message",
   ]) {
-    expect(labels).not.toContain(label);
+    expect(chips(dialog, label)).toEqual(chips(dialog, "Steer active response"));
   }
+  expect(chips(dialog, "Steer active response")).toContain("Ctrl");
 });
 
 it.each(

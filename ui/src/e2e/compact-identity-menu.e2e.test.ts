@@ -95,11 +95,8 @@ suite.define(() => {
       },
     ));
 
-  it("shows menu keycaps for pointer devices and hides them on touch-only phones", async () => {
-    for (const [touch, visible] of [
-      [false, true],
-      [true, false],
-    ] as const) {
+  it("hides menu keycaps on touch-only phones until a hardware keyboard is used", async () => {
+    for (const touch of [false, true]) {
       await suite.withPage(
         { viewport: { width: 390, height: 844 }, isMobile: touch, hasTouch: touch },
         async ({ page }) => {
@@ -108,9 +105,14 @@ suite.define(() => {
           await waitForControlUiGatewayReady(page);
           await page.locator(".topbar-nav-toggle").click();
           const menu = await openMenu(page);
-          const settings = menu.locator('[data-value="command:settings"]');
-          await settings.waitFor({ state: "visible" });
-          expect(await settings.locator(".shortcut-kbd").isVisible()).toBe(visible);
+          const keycap = menu.locator('[data-value="command:settings"] .shortcut-kbd');
+          await menu.locator('[data-value="command:settings"]').waitFor({ state: "visible" });
+          expect(await keycap.isVisible()).toBe(!touch);
+          if (touch) {
+            // Only a hardware keyboard sends arrows; the open menu reveals its keycaps live.
+            await page.keyboard.press("ArrowDown");
+            await keycap.waitFor({ state: "visible" });
+          }
         },
       );
     }

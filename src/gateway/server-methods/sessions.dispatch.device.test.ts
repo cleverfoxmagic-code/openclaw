@@ -355,7 +355,7 @@ describe("sessions.dispatch device targets", () => {
         expect(dispatch).toHaveBeenCalledWith(
           expect.objectContaining({ profileId: "device:second", deviceId: "second" }),
           expect.any(Function),
-          undefined,
+          expect.any(Function),
           undefined,
         );
         expect(respond).toHaveBeenCalledWith(
@@ -661,7 +661,7 @@ describe("sessions.dispatch device targets", () => {
             deviceId: "device-1",
           }),
           expect.any(Function),
-          undefined,
+          expect.any(Function),
           undefined,
         );
       } else {

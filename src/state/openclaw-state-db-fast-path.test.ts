@@ -3,6 +3,8 @@ import { realpathSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { needsOpenClawStateDatabaseSchemaRepair } from "./openclaw-state-db-fast-path.js";
+import { ensureSecretStoreSchema } from "./openclaw-state-db-schema-additive.js";
 import * as state from "./openclaw-state-db.js";
 
 const dirs = useAutoCleanupTempDirTracker((cleanup) =>
@@ -131,4 +133,25 @@ it.each([false, true])("settles Doctor's disabled foreign-key connection (failur
   );
   expect([...selected].map((database) => database.isOpen)).toEqual([false]);
   expect(foreignKeys()).toBe(0);
+});
+
+it("detects and completes startup columns in present lazy tables", async () => {
+  const env = { OPENCLAW_STATE_DIR: dirs.make("state-lazy-startup-") };
+  const opened = state.openOpenClawStateDatabase({ env });
+  ensureSecretStoreSchema(opened.db);
+  const pathname = opened.path;
+  await state.closeOpenClawStateDatabaseAsync();
+  {
+    using database = new DatabaseSync(pathname);
+    database.exec("ALTER TABLE secret_store_entries DROP COLUMN allowed_hosts");
+  }
+  expect(needsOpenClawStateDatabaseSchemaRepair(pathname)).toBe(true);
+  const repaired = state.openOpenClawStateDatabase({ env });
+  expect(repaired.db.prepare("SELECT allowed_hosts FROM secret_store_entries").all()).toEqual([]);
+  expect(
+    repaired.db
+      .prepare("SELECT name FROM sqlite_schema WHERE name = 'user_profile_identities'")
+      .get(),
+  ).toBeUndefined();
+  expect(needsOpenClawStateDatabaseSchemaRepair(pathname)).toBe(false);
 });

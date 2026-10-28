@@ -10,11 +10,13 @@ import {
   readSqliteSchemaCookie,
   type SqliteTableContractReader,
 } from "../infra/sqlite-schema-contract.js";
+import { throwSqliteSchemaMismatches } from "../infra/sqlite-schema-issues.js";
 import { prepareSqliteReadOnlyLocationSync } from "../infra/sqlite-snapshot-source.js";
 import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
 import { hasLegacyCronRunLogs } from "../infra/state-legacy-cron-presence.js";
 import { hasUpdateDoctorMigrationCapture } from "../infra/update-doctor-migration-attribution.js";
 import { readAgentDatabaseLeaseProvenance } from "./openclaw-agent-db-lease-provenance.js";
+import { CLAW_STARTUP_ADDITIVE_STATE_COLUMN_DEFINITIONS } from "./openclaw-state-db-additive-columns.js";
 import {
   getStateRuntimeSchemaAdmission,
   publishStateRuntimeSchemaAdmission,
@@ -76,6 +78,17 @@ export function assertCurrentStateRuntimeSchema(
   pathname: string,
   readTable: SqliteTableContractReader = createSqliteTableContractReader(database),
 ): void {
+  // Lazy tables may be absent, but present tables still need their startup columns.
+  // Share the cold admission reader; warm handles retain the published facts.
+  for (const { tableName, columnName } of CLAW_STARTUP_ADDITIVE_STATE_COLUMN_DEFINITIONS) {
+    if (!STATE_RUNTIME_SCHEMA_COMPATIBILITY.excludedTables?.includes(tableName)) {
+      continue;
+    }
+    const table = readTable(tableName);
+    if (table && !table.columns.some((column) => column.name === columnName)) {
+      throwSqliteSchemaMismatches(pathname, [`missing column ${tableName}.${columnName}`]);
+    }
+  }
   assertCanonicalStateSchemaShape(database, pathname);
   assertOpenClawStateDatabaseForMaintenance(database, { pathname }, readTable);
   assertSqliteSchemaContains(

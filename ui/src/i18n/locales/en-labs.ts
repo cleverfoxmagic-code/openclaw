@@ -70,9 +70,9 @@ const enLabs = {
       description:
         "Let installed plugins add pages, widgets, and custom views. Their JavaScript runs with your signed-in permissions, so enable only plugins you trust. Bundled plugin views remain available. Reload this tab to clear previously loaded plugin code.",
     },
-    claws: {
-      title: "Claws",
-      description: "Claws are ready-made agents for specific tasks.",
+    templates: {
+      title: "Templates",
+      description: "Templates are ready-made agents for specific tasks.",
     },
     hostDesktop: {
       title: "Host Desktop",

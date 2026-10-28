@@ -36,7 +36,7 @@ export async function resumeAgentDeletions(
   const { entries, manualClawAgentIds } = await restorePendingDeletionFences();
   for (const agentId of manualClawAgentIds) {
     context.logGateway.warn(
-      `Claw ${agentId} removal remains pending; retry its Claw removal plan.`,
+      `Template ${agentId} removal remains pending; retry its Template removal plan.`,
     );
   }
   for (const journal of entries) {

@@ -67,10 +67,10 @@ const STATE_PERSISTENT_SCHEMA_COMPATIBILITY: SqliteSchemaCompatibility = {
   allowedMissingColumns: CLAW_FIRST_USE_ADDITIVE_STATE_COLUMNS,
   allowedColumnDefinitions: {
     "diagnostic_events.sequence": ["sequence INTEGER NOT NULL DEFAULT 0"],
-    "claw_package_refs.package_integrity": [
+    "template_package_refs.package_integrity": [
       "package_integrity TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000'",
     ],
-    "claw_package_refs.updated_at_ms": ["updated_at_ms INTEGER NOT NULL DEFAULT 0"],
+    "template_package_refs.updated_at_ms": ["updated_at_ms INTEGER NOT NULL DEFAULT 0"],
     "cron_jobs.enabled": ["enabled INTEGER NOT NULL DEFAULT 1"],
     "cron_jobs.name": ["name TEXT NOT NULL DEFAULT ''"],
     "cron_jobs.payload_kind": ["payload_kind TEXT NOT NULL DEFAULT 'message'"],

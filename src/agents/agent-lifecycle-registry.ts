@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { PersistedClawInstall } from "../claws/provenance-types.js";
 import { captureActiveCronJobAgentDeletion } from "../cron/active-jobs.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
 import {
@@ -57,6 +56,7 @@ import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
 import type { DomainScope } from "../state/openclaw-state-worker-store.types.js";
 import { isReservedSystemAgentId } from "../system-agent/agent-id.js";
+import type { PersistedTemplateInstall } from "../templates/provenance-types.js";
 import {
   beginRemoteAgentDeletionJournal,
   fenceAgentDeletionJournalPaths,
@@ -82,7 +82,7 @@ const deletionQueues = resolveGlobalSingleton(
 );
 
 type AgentDeletionBeginOptions = {
-  expectedClawInstall?: PersistedClawInstall | null;
+  expectedClawInstall?: PersistedTemplateInstall | null;
   preserveDeleteFiles?: boolean;
   recoveryOperationId?: string;
 };

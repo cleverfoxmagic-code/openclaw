@@ -195,7 +195,7 @@ const blocked = (id = "main") => isAgentDeletionBlocked(id, options);
 const setProvenance = (
   nowMs?: number,
   agentId = "main",
-  createdVia: "operator" | "claw" = "operator",
+  createdVia: "operator" | "template" = "operator",
 ) => recordAgentProvenance(agentId, { createdVia }, { ...options, nowMs });
 
 beforeEach(() => {

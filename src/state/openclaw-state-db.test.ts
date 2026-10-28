@@ -1860,11 +1860,11 @@ describe("openclaw state database", () => {
     await expectRepair(options, []);
   });
 
-  it("repairs same-version Claw bootstrap columns with a missing index through its admitted path", () => {
+  it("repairs same-version Template bootstrap columns with a missing index through its admitted path", () => {
     const { options } = createStateFixture((shippedSchema) => {
       shippedSchema.exec(`
-        ALTER TABLE claw_installs DROP COLUMN bootstrap_source_path;
-        ALTER TABLE claw_installs DROP COLUMN bootstrap_content_digest;
+        ALTER TABLE template_installs DROP COLUMN bootstrap_source_path;
+        ALTER TABLE template_installs DROP COLUMN bootstrap_content_digest;
       `);
 
       shippedSchema.exec("DROP INDEX idx_task_runs_runtime_run;");
@@ -1873,7 +1873,7 @@ describe("openclaw state database", () => {
     });
 
     const reopened = openOpenClawStateDatabase(options);
-    const columns = reopened.db.prepare("PRAGMA table_info(claw_installs)").all() as Array<{
+    const columns = reopened.db.prepare("PRAGMA table_info(template_installs)").all() as Array<{
       name: string;
     }>;
     expect(columns.map((column) => column.name)).toEqual(
@@ -2553,26 +2553,26 @@ describe("openclaw state database", () => {
       }),
   );
 
-  it("adds and backfills Claw package update timestamps in existing state databases", async () => {
+  it("adds and backfills Template package update timestamps in existing state databases", async () => {
     const stateDir = createTempStateDir();
     const legacyDb = openMaterializedCurrentStateDatabase(stateDir);
-    insertRow(legacyDb, "claw_package_refs", {
+    insertRow(legacyDb, "template_package_refs", {
       agent_id: "incident",
       package_kind: "plugin",
       package_source: "clawhub",
       package_ref: "@owner/audit",
       package_version: "2.0.1",
       package_integrity: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      schema_version: "openclaw.clawPackageRef.v1",
-      claw_name: "incident-claw",
+      schema_version: "openclaw.templatePackageRef.v1",
+      template_name: "incident-claw",
       package_status: "complete",
       relationship: "referenced",
-      origin: "claw-introduced",
+      origin: "template-introduced",
       independent_owner: 0,
       installed_at_ms: 1234,
       updated_at_ms: 5678,
     });
-    legacyDb.exec("ALTER TABLE claw_package_refs DROP COLUMN updated_at_ms");
+    legacyDb.exec("ALTER TABLE template_package_refs DROP COLUMN updated_at_ms");
     markStateDatabaseVersion(legacyDb, 5);
     legacyDb.close();
 
@@ -2582,7 +2582,7 @@ describe("openclaw state database", () => {
     const reopened = openOpenClawStateDatabase({
       env: { OPENCLAW_STATE_DIR: stateDir },
     });
-    expectRecord(reopened.db, "claw_package_refs", {
+    expectRecord(reopened.db, "template_package_refs", {
       installed_at_ms: 1234,
       updated_at_ms: 1234,
     });

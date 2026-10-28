@@ -1,10 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
-import { readClawInstallRecordFromDatabase } from "../claws/provenance-read.kernel.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import {
   deferSqliteWorkerCommitReceipt,
   requestSqliteWorkerOperationAdmission,
 } from "../infra/sqlite-worker-operation-admission.js";
+import { readTemplateInstallRecordFromDatabase } from "../templates/provenance-read.kernel.js";
 import {
   readAgentDeletionJournalAuthorityInDatabase,
   retireAgentDeletionJournalInDatabase,
@@ -69,11 +69,11 @@ function assertClawInstall(
   if (
     predicate.expectedClawInstall !== undefined &&
     !isDeepStrictEqual(
-      readClawInstallRecordFromDatabase(database.db, predicate.agentId) ?? null,
+      readTemplateInstallRecordFromDatabase(database.db, predicate.agentId) ?? null,
       predicate.expectedClawInstall,
     )
   ) {
-    throw Object.assign(new Error(`Claw removal no longer owns agent ${predicate.agentId}.`), {
+    throw Object.assign(new Error(`Template removal no longer owns agent ${predicate.agentId}.`), {
       code: "CLAW_INSTALL_CHANGED",
     });
   }
@@ -308,11 +308,11 @@ export const agentDeletionOperations = {
             input.files.filter((file) => file.action !== "error").map((file) => file.path),
           ),
         ];
-        if (paths.length && tableExists(database.db, "claw_workspace_files")) {
+        if (paths.length && tableExists(database.db, "template_workspace_files")) {
           executeSqliteQuerySync(
             database.db,
             query
-              .deleteFrom("claw_workspace_files")
+              .deleteFrom("template_workspace_files")
               .where("agent_id", "=", agentId)
               .where("target_path", "in", paths),
           );
@@ -320,16 +320,16 @@ export const agentDeletionOperations = {
         if (!input.complete) {
           return false;
         }
-        if (tableExists(database.db, "claw_package_refs")) {
+        if (tableExists(database.db, "template_package_refs")) {
           executeSqliteQuerySync(
             database.db,
-            query.deleteFrom("claw_package_refs").where("agent_id", "=", agentId),
+            query.deleteFrom("template_package_refs").where("agent_id", "=", agentId),
           );
         }
-        if (tableExists(database.db, "claw_installs")) {
+        if (tableExists(database.db, "template_installs")) {
           executeSqliteQuerySync(
             database.db,
-            query.deleteFrom("claw_installs").where("agent_id", "=", agentId),
+            query.deleteFrom("template_installs").where("agent_id", "=", agentId),
           );
         }
         if (!completeAgentDeletionJournalInDatabase(database, agentId, operationId)) {
@@ -354,7 +354,7 @@ export const agentDeletionOperations = {
           journal.cleanupCompleted ||
           (input.guard.predicate.expectedClawInstall !== undefined &&
             !isDeepStrictEqual(
-              readClawInstallRecordFromDatabase(database.db, agentId) ?? null,
+              readTemplateInstallRecordFromDatabase(database.db, agentId) ?? null,
               input.guard.predicate.expectedClawInstall,
             ))
         ) {
@@ -364,7 +364,7 @@ export const agentDeletionOperations = {
         const result = executeSqliteQuerySync(
           database.db,
           getNodeSqliteKysely<DB>(database.db)
-            .updateTable("claw_installs")
+            .updateTable("template_installs")
             .set({ status: "partial", updated_at_ms: input.nowMs })
             .where("agent_id", "=", agentId),
         );

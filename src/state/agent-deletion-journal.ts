@@ -362,7 +362,7 @@ export function beginAgentDeletionJournalInDatabase(
       throw new Error(`Agent ${normalized.agentId} deletion changed before recovery.`);
     }
     if (existing.phase == null && hasClawDeletionOwnership(database, normalized.agentId)) {
-      throw new Error(`Agent ${normalized.agentId} deletion requires its Claw removal owner.`);
+      throw new Error(`Agent ${normalized.agentId} deletion requires its Template removal owner.`);
     }
   }
   const registeredDatabasePaths = executeSqliteQuerySync(

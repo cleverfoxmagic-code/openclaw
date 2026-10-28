@@ -15,7 +15,7 @@ import type { PluginInstallBatchReload } from "../plugins/install-runtime-batch.
 import { createDeferredCore } from "../shared/deferred.js";
 import { registerSignalExitGate } from "./signal-exit-barrier.js";
 
-/** Capture the local client before a Claw batch takes any package or plugin lease. */
+/** Capture the local client before a Template batch takes any package or plugin lease. */
 export async function resolvePluginBatchReload(): Promise<PluginInstallBatchReload | undefined> {
   const gateway = await resolvePluginLifecycleGateway();
   return gateway

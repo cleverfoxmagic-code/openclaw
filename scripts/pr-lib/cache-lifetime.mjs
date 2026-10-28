@@ -375,6 +375,7 @@ function withCacheOwner(cache, operation, initialize, readOnly = false) {
       pause,
       0,
       0,
+      // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- Both supported runtimes return bigint nanoseconds; Atomics.wait requires numeric milliseconds.
       Math.max(0, Math.min(10, Number(deadline - process.hrtime.bigint()) / 1_000_000)),
     );
   }

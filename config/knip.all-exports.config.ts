@@ -47,6 +47,8 @@ function listQaScenarioExecutionEntries(dir = "qa/scenarios"): string[] {
 
 const QA_SCENARIO_EXECUTION_ENTRIES = listQaScenarioExecutionEntries();
 const ROOT_TEST_ENTRY_GLOBS = [
+  // The maintained live-test launcher is invoked directly by its source-header command.
+  "test/helpers/run-quiet-steering-live.mts!",
   "*.{test,spec}.{js,mjs,cjs,ts,tsx,mts,cts}!",
   "src/**/*.{test,spec}.{js,mjs,cjs,ts,tsx,mts,cts}!",
   "scripts/**/*.{test,spec}.{js,mjs,cjs,ts,tsx,mts,cts}!",

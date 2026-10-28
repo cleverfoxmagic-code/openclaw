@@ -1,17 +1,8 @@
-import {
-  Virtualizer,
-  elementScroll,
-  observeElementOffset,
-  observeElementRect,
-} from "@tanstack/virtual-core";
 import { afterEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { cleanupSolid, mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { MessageReactionPicker } from "./chat-message-reactions-view.tsx";
-import { TranscriptLayoutOwner } from "./chat-transcript-layout-owner.ts";
-import { ChatTranscriptRenderer } from "./chat-transcript-layout-solid.tsx";
-import type { TranscriptLayoutProps } from "./chat-transcript-layout.ts";
-import { createTranscriptMessageElements } from "./chat-transcript-message-elements.ts";
+import { ChatSessionVirtualizerHost } from "./chat-transcript-virtualizer-host.ts";
 import "../../../styles/chat/grouped.css";
 import "../../../styles/chat/layout.css";
 
@@ -37,52 +28,27 @@ it("keeps the reaction picker beside its message after a virtualized transcript 
     ),
     { container: pickerHost },
   );
-  const renderer = new ChatTranscriptRenderer();
-  const layout = new TranscriptLayoutOwner(() => {});
-  layout.rows = rows;
-  const messageElements = createTranscriptMessageElements(() => undefined);
-  const virtualizer = new Virtualizer<HTMLDivElement, HTMLElement>({
-    count: rows.length,
-    getScrollElement: () => viewport,
-    estimateSize: () => 80,
-    getItemKey: (index) => rows[index]!.key,
-    scrollToFn: elementScroll,
-    observeElementOffset,
-    observeElementRect,
-    initialRect: { width: 800, height: 500 },
-    initialOffset: 400,
-    overscan: 1,
-    onChange: () => paint(),
-  });
-  const props: TranscriptLayoutProps = {
-    rows,
-    virtualizer,
-    layout,
-    messageElements,
-    getContent: (index) => rows[index]!.content,
-    header: null,
-    overlay: null,
-    headerHeight: 0,
-    presented: true,
-    scrollElementRef() {},
-    captureInteractionResize() {},
-    measureRowRefFor: () => () => {},
-    measureRows: false,
-    initialPositionPending: () => false,
-    onCommit() {},
-  };
+  const session = new ChatSessionVirtualizerHost(() => queueMicrotask(paint), 400);
+  session.layout.ready = true;
   function paint() {
-    const element = renderer.render({ ...props });
+    if (!session.connected) {
+      return;
+    }
+    const element = session.render(
+      rows,
+      (row) => (row.kind === "content" ? row.content : null),
+      null,
+      false,
+    );
     if (element.parentElement !== viewport) {
       viewport.append(element);
     }
-    renderer.connect();
+    session.update();
   }
-  const { _didMount: mountVirtualizer, _willUpdate: updateVirtualizer } = virtualizer;
-  const releaseVirtualizer = mountVirtualizer();
   try {
+    session.connect();
     paint();
-    updateVirtualizer();
+    await expect.poll(() => session.isPositionSettled).toBe(true);
     const firstIndex = () =>
       Number(viewport.querySelector(".chat-virtual-row")?.getAttribute("data-index"));
     await expect.poll(firstIndex).toBeGreaterThan(0);
@@ -105,10 +71,7 @@ it("keeps the reaction picker beside its message after a virtualized transcript 
     await expect.poll(firstIndex).toBeGreaterThan(beforeScroll);
     await openPicker();
   } finally {
-    releaseVirtualizer();
-    renderer.dispose();
-    layout.disconnect();
-    messageElements.dispose();
+    session.dispose();
     picker.unmount();
     viewport.remove();
     await page.viewport(previousViewport.width, previousViewport.height);

@@ -206,6 +206,8 @@ it("grant changes need operator admin and the current revision, and persist in t
   expect(
     (await f.service.stores_snapshot({}, f.admin)).grants.entries.map((e) => e.sessionKey),
   ).toStrictEqual([GROUP]);
+  // Final effect: the room never reads private knowledge through the reverted grant.
+  expect(await f.titles(f.chat("agent:main:discord:channel:888"))).toStrictEqual([]);
   // Grants are Knowledge state, not configuration, and survive a restart.
   expect(f.host.config.plugins.entries.knowledge.config).not.toHaveProperty("conversationGrants");
   await Promise.all(f.services.map((s: any) => s.stop()));

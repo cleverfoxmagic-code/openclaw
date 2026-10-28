@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { memoryIndexCutoff, readMemoryIndex } from "./memory-index-hook.js";
 import { memoryFixture } from "./memory-provider.test-support.js";
-import type { Stores } from "./stores.js";
-import { operatorContext, useTestTempDirs } from "./test-support.js";
+import { parsePolicy } from "./stores-config.js";
+import { Stores } from "./stores.js";
+import { afterTest, operatorContext, useTestTempDirs } from "./test-support.js";
 
 const tempDirs = useTestTempDirs();
 
@@ -90,42 +91,33 @@ it("pins the index per physical store, so a binding moved to a fresh store rende
   expect(await readMemoryIndex(stores, ctx, 1)).toBe("index of vault-own");
 });
 
-it("never reuses a pinned index once the opened principal is no longer private", async () => {
-  let scope: { visibility: string; sessionId?: string } = { visibility: "private" };
-  const runtime = {
-    vaultId: "vault-one",
-    enqueue: (check: () => void, operation: () => unknown) => {
-      check();
-      return operation();
-    },
-    client: { call: async () => ({ text: "private index" }) },
+it("a grant revoked while the store opens never releases the pinned private index", async () => {
+  const f = await memoryFixture(tempDirs);
+  await f.save("Private page title");
+  // Real Stores, registry and storage workers over the fixture's host.
+  const stores = new Stores(
+    f.api,
+    parsePolicy({ operatorRead: true, writesEnabled: true }),
+    () => {},
+  );
+  afterTest(() => stores.stop());
+  await stores.ensure();
+  await stores.registry.call("grant", f.conversation.sessionKey, "read", stores.grants().revision);
+  const ctx = hookContext(f, { memoryAudience: f.conversation }),
+    asOf = Date.now();
+  expect(await readMemoryIndex(stores, ctx, asOf)).toContain("Private page title");
+  // Revoke exactly while the next index read opens its store.
+  const open = stores.open.bind(stores);
+  stores.open = async (...args) => {
+    await stores.registry.call(
+      "grant",
+      f.conversation.sessionKey,
+      "none",
+      stores.grants().revision,
+    );
+    return open(...args);
   };
-  // A grant revoked while the store opens: the opened access is pinned to the conversation.
-  const stub = {
-    async ensure() {},
-    grantFor: () => undefined,
-    async open(): Promise<unknown> {
-      return {
-        kind: "ready",
-        binding: "agent:main",
-        runtime,
-        access: { scope, assertCurrent() {} },
-      };
-    },
-  };
-  // SAFETY: readMemoryIndex calls only the members stubbed above.
-  const stores = stub as unknown as Stores;
-  const ctx = {
-    agentId: "main",
-    sessionKey: `agent:main:revoke-${randomUUID()}`,
-    sessionId: randomUUID(),
-    sandboxed: false,
-    memoryAudience: { kind: "owner-private" as const, agentId: "main" },
-    assertMemoryAudienceCurrent() {},
-  };
-  expect(await readMemoryIndex(stores, ctx, 1)).toBe("private index");
-  scope = { visibility: "conversation", sessionId: ctx.sessionId };
-  expect(await readMemoryIndex(stores, ctx, 1)).toBe("");
+  expect(await readMemoryIndex(stores, ctx, asOf)).toBe("");
 });
 
 it("omits the index for conversation, missing and sandboxed audiences and revoked callers", async () => {

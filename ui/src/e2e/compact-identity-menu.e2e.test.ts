@@ -95,6 +95,27 @@ suite.define(() => {
       },
     ));
 
+  it("shows menu keycaps for pointer devices and hides them on touch-only phones", async () => {
+    for (const [touch, visible] of [
+      [false, true],
+      [true, false],
+    ] as const) {
+      await suite.withPage(
+        { viewport: { width: 390, height: 844 }, isMobile: touch, hasTouch: touch },
+        async ({ page }) => {
+          await installMockGateway(page, { sessions: [], historyMessages: [] });
+          await page.goto(`${suite.server.baseUrl}new`);
+          await waitForControlUiGatewayReady(page);
+          await page.locator(".topbar-nav-toggle").click();
+          const menu = await openMenu(page);
+          const settings = menu.locator('[data-value="command:settings"]');
+          await settings.waitFor({ state: "visible" });
+          expect(await settings.locator(".shortcut-kbd").isVisible()).toBe(visible);
+        },
+      );
+    }
+  });
+
   it("keeps Get the apps available in a browser", async () =>
     suite.withPage({ viewport: { width: 1280, height: 900 } }, async ({ page }) => {
       await installMockGateway(page, { sessions: [], historyMessages: [] });

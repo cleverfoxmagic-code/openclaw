@@ -63,7 +63,7 @@ export function Kbd(props: KbdOptions & { keys: string | number | readonly strin
       : props.keys;
   return (
     <kbd
-      class={["shortcut-kbd", props.class]}
+      class={["shortcut-kbd", props.inline && "shortcut-kbd--inline", props.class]}
       style={props.inline ? { "font-size": "inherit" } : undefined}
       slot={props.slot}
       aria-hidden={props.ariaHidden ? "true" : undefined}

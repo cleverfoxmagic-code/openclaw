@@ -34,3 +34,12 @@
   align-items: center;
   gap: 0.5em;
 }
+
+/* Touch-only devices (phones, tablets without a trackpad) rarely have a keyboard
+   attached, so menu and hint keycaps are noise there. Keys inside sentences and the
+   shortcut reference dialog stay: hiding them would break the copy. */
+@media (any-hover: none) and (any-pointer: coarse) {
+  .shortcut-kbd:not(.shortcut-kbd--inline, openclaw-keyboard-shortcuts-dialog *) {
+    display: none;
+  }
+}

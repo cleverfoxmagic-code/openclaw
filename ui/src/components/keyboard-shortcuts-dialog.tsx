@@ -106,17 +106,28 @@ function resolveKeyboardShortcutSections(
   return KEYBOARD_SHORTCUT_SECTIONS.map((section) =>
     keyboardShortcutSection(
       section.id,
-      // Mobile Return always edits natively; ⌘/Ctrl+Return sends with either preference.
-      section.entries.map((entry) =>
-        mobile && entry.id === "newline"
-          ? keyboardShortcutEntry(entry.id, KEYBOARD_SHORTCUT_COMBOS.sendMessage)
-          : entry.id === "newSession"
-            ? keyboardShortcutEntry(entry.id, resolveNewSessionShortcut())
-            : (mobile || sendShortcut === "modifier-enter") &&
-                SEND_PREFERENCE_ENTRY_IDS.has(entry.id)
-              ? keyboardShortcutEntry(entry.id, KEYBOARD_SHORTCUT_COMBOS.modifiedEnter)
-              : entry,
-      ),
+      section.entries
+        .filter(
+          (entry) =>
+            !mobile ||
+            !(
+              SEND_PREFERENCE_ENTRY_IDS.has(entry.id) ||
+              entry.id === "paletteStartSession" ||
+              entry.id === "steerImmediately" ||
+              entry.id === "saveQueuedMessage"
+            ),
+        )
+        .map((entry) =>
+          mobile && entry.id === "newline"
+            ? keyboardShortcutEntry(entry.id, KEYBOARD_SHORTCUT_COMBOS.sendMessage)
+            : entry.id === "newSession"
+              ? keyboardShortcutEntry(entry.id, resolveNewSessionShortcut())
+              : !mobile &&
+                  sendShortcut === "modifier-enter" &&
+                  SEND_PREFERENCE_ENTRY_IDS.has(entry.id)
+                ? keyboardShortcutEntry(entry.id, KEYBOARD_SHORTCUT_COMBOS.modifiedEnter)
+                : entry,
+        ),
     ),
   );
 }

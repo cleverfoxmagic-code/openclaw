@@ -431,7 +431,7 @@ function PaletteSearch(props: {
             <Icon name="messageSquarePlus" />
           </span>
           <h2>{t("palette.noResults")}</h2>
-          <Show when={keyboardHintsVisible()}>
+          <Show when={!isMobileBrowserPlatform()}>
             <p>
               <ShortcutText
                 text={t("palette.noResultsStart", { shortcut: "{shortcut}" })}
@@ -446,7 +446,6 @@ function PaletteSearch(props: {
       <div id="cmd-palette-keys" class="cmd-palette__footer">
         <Show when={results().items.length > 0 && !current().query.includes("\n")}>
           <PaletteHint shortcut={<Kbd keys={["↑", "↓"]} />} label={t("palette.footer.navigate")} />
-          {/* Mobile Return edits natively instead of selecting. */}
           <Show when={!isMobileBrowserPlatform()}>
             <PaletteHint shortcut={<Kbd keys="↵" />} label={t("palette.footer.select")} />
           </Show>
@@ -593,7 +592,9 @@ export function CommandPaletteView(props: { readProps: () => CommandPaletteProps
                         ? "palette.startingSession"
                         : "palette.startSession",
                     )}
-                    <KeyboardShortcut combo={KEYBOARD_SHORTCUT_COMBOS.modifiedEnter} />
+                    <Show when={!isMobileBrowserPlatform()}>
+                      <KeyboardShortcut combo={KEYBOARD_SHORTCUT_COMBOS.modifiedEnter} />
+                    </Show>
                   </button>
                 </openclaw-tooltip>
                 <PaletteSessionControls draft={current().draft} revision={current()} />
@@ -661,10 +662,12 @@ export function CommandPaletteView(props: { readProps: () => CommandPaletteProps
           </div>
           <Show when={current().draft.attachmentMode}>
             <div class="cmd-palette__footer">
-              <PaletteHint
-                shortcut={<KeyboardShortcut combo={KEYBOARD_SHORTCUT_COMBOS.modifiedEnter} />}
-                label={t("palette.startSession")}
-              />
+              <Show when={!isMobileBrowserPlatform()}>
+                <PaletteHint
+                  shortcut={<KeyboardShortcut combo={KEYBOARD_SHORTCUT_COMBOS.modifiedEnter} />}
+                  label={t("palette.startSession")}
+                />
+              </Show>
               <PaletteNewlineHint />
             </div>
           </Show>

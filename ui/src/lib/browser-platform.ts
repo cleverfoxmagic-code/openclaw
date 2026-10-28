@@ -16,12 +16,9 @@ export function isMobileBrowserPlatform(): boolean {
   return isIosBrowserPlatform() || /Android/u.test(globalThis.navigator.userAgent);
 }
 
-/**
- * Keep native mobile editing, without allowing ancestor shortcuts to submit Return.
- * On-screen keyboards cannot type ⌘/Ctrl+Return, so that chord keeps its hardware shortcut.
- */
+/** Keep native mobile editing, without allowing ancestor shortcuts to submit Return. */
 export function keepMobileReturnNative(event: KeyboardEvent): boolean {
-  if (event.key !== "Enter" || event.metaKey || event.ctrlKey || !isMobileBrowserPlatform()) {
+  if (event.key !== "Enter" || !isMobileBrowserPlatform()) {
     return false;
   }
   event.stopPropagation();

@@ -28,7 +28,7 @@ let hardwareKeyboard = false;
  * keeps hints until reload; that rare, harmless state needs no heuristics.
  */
 export const keyboardHints = {
-  visible: () => hardwareKeyboard || touchOnly?.matches !== true,
+  visible: () => hardwareKeyboard || !touchOnly?.matches,
   subscribe: changes.subscribe,
 };
 

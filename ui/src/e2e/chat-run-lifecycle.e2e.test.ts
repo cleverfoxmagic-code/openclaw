@@ -300,6 +300,7 @@ suite.define(() => {
       .getByText(reply.content, { exact: true });
     await replyBody.waitFor();
     const operationLabel = page.locator(".chat-work-group .chat-activity-group__label");
+    const recap = page.locator(".chat-turn-recap");
     const refreshedSession = await evaluateControlUiContext(
       page,
       async (application, key) => {
@@ -311,7 +312,8 @@ suite.define(() => {
     );
     expect(refreshedSession).toMatchObject({ lastRunId: runId, runtimeMs: 13_000 });
     await operationLabel.waitFor();
-    await expect.poll(() => operationLabel.textContent()).toBe("Worked for 13 seconds");
+    await expect.poll(() => operationLabel.textContent()).toBe("Worked");
+    await expect.poll(() => recap.textContent()).toContain("Done in 13 seconds");
     expect(await stopButton(page).count()).toBe(0);
 
     const successorSession = {
@@ -332,23 +334,24 @@ suite.define(() => {
     const screenshot = await takeControlUiScreenshotFrame(
       page,
       page.locator(".chat-thread"),
-      [operationLabel, replyBody],
+      [operationLabel, replyBody, recap],
       { animations: "disabled" },
     );
     await writeFile(join(suite.artifactDir, "worked-duration.png"), screenshot.png);
     console.log("WORKED_DURATION_PROOF", suite.artifactDir);
-    await expect.poll(() => operationLabel.textContent()).toBe("Worked for 13 seconds");
-    expect(await page.locator(".chat-turn-recap").allTextContents()).not.toEqual(
-      expect.arrayContaining([expect.stringContaining("Done in")]),
-    );
-    expect(await page.locator(".chat-turn-recap").textContent()).toBe("42 output tokens");
+    await expect.poll(() => operationLabel.textContent()).toBe("Worked");
+    const recapText = await recap.textContent();
+    expect(recapText).toContain("Done in 13 seconds");
+    expect(recapText).toContain("42 output tokens");
+    expect(recapText).not.toContain("27 seconds");
     await gateway.setSessionsListResponse({ sessions: [completedSession] });
 
     await page.reload();
     await gateway.waitForRequest("sessions.messages.subscribe", { match: { key: sessionKey } });
     await replyBody.waitFor();
     await operationLabel.waitFor();
-    expect(await operationLabel.textContent()).toBe("Worked for 13 seconds");
+    expect(await operationLabel.textContent()).toBe("Worked");
+    await expect.poll(() => recap.textContent()).toContain("Done in 13 seconds");
     expect(await page.locator(".chat-group.user").count()).toBe(2);
     await operationLabel.click();
     await expect

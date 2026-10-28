@@ -7,7 +7,7 @@ import {
   requireRecord,
   requireString,
 } from "./chat-flow.test-support.ts";
-import { polledAttribute, polledCount, polledText } from "./chat-presentation.test-support.ts";
+import { polledCount, polledText } from "./chat-presentation.test-support.ts";
 import { createControlUiE2eContextOptions } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createChatFlowE2eSuite();
@@ -17,8 +17,8 @@ const finalText = "The lunar exhibit inventory is complete.";
 suite.define(() => {
   it.each([
     ["visible final answer", "inventory-final_answer", false],
-    ["folded earlier assistant message", "inventory-earlier", false],
-    ["deep earlier message in standalone work", "inventory-earlier", true],
+    ["earlier inline assistant message", "inventory-earlier", false],
+    ["deep earlier message beside collapsed work", "inventory-earlier", true],
   ] as const)(
     "reveals the %s after replying through transcript search",
     async (_name, sourceId, deepWork) => {
@@ -74,10 +74,16 @@ suite.define(() => {
         const pane = page.locator(".chat-pane-cache__pane--active");
         const source = pane.locator(`.chat-bubble[data-entry-id="${sourceId}"]`);
         const earlierMessage = pane.locator('.chat-bubble[data-entry-id="inventory-earlier"]');
-        const workToggle = pane.locator(".chat-work-group button");
+        const workToggles = pane.locator(".chat-work-group > button");
+        const readWork = () =>
+          workToggles.evaluateAll((buttons) => ({
+            present: buttons.length > 0,
+            collapsed: buttons.every((button) => button.getAttribute("aria-expanded") === "false"),
+          }));
         await page.goto(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
-        await polledAttribute(workToggle, "aria-expanded").toBe("false");
-        expect(await earlierMessage.count()).toBe(0);
+        // Narration stays inline; only contiguous tool/reasoning stretches fold.
+        await polledCount(earlierMessage).toBe(1);
+        await expect.poll(readWork).toEqual({ present: deepWork, collapsed: true });
 
         const composer = pane.locator(".agent-chat__composer-combobox textarea");
         await composer.focus();
@@ -109,8 +115,8 @@ suite.define(() => {
           text: "Here is more detail about the inventory step.",
         });
         await exactButton(pane, "Close search").click();
-        await polledAttribute(workToggle, "aria-expanded").toBe("false");
-        expect(await earlierMessage.count()).toBe(0);
+        await polledCount(earlierMessage).toBe(1);
+        await expect.poll(readWork).toEqual({ present: deepWork, collapsed: true });
         const preview = pane.locator(".chat-reply-attribution--inline");
         await expect.poll(() => preview.getByRole("button").count()).toBe(1);
 

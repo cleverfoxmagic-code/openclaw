@@ -18,7 +18,7 @@ describe("independent policy defaults", () => {
       expect(snapshot.runtimeConfig.security).toBeUndefined();
       expect(snapshot.runtimeConfig.tools).toBeUndefined();
       expect(snapshot.runtimeConfig.agents?.defaults?.sandbox).toBeUndefined();
-      expect(snapshot.runtimeConfig.messages?.queue).toBeUndefined();
+      expect(snapshot.runtimeConfig.messages?.queue?.allowCollaborativeSteering).toBe(true);
       expect(snapshot.runtimeConfig.session?.dmScope).toBeUndefined();
     });
   });

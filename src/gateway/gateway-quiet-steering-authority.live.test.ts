@@ -853,8 +853,8 @@ describeLive("quiet steering with real caller authority", () => {
         );
         return { rejected: rejected.runId, receipt: before.inputReceipts };
       });
-      // Cross-requester collaboration remains an explicit opt-in.
-      await restartQueue(true, "queue");
+      // Exercise the public default without an explicit collaboration override.
+      await restartQueue(undefined, "queue");
       for (const highIncumbent of [true, false]) {
         await caseRun(
           "collaborative steer intentionally retains incumbent authority; high incumbent=" +

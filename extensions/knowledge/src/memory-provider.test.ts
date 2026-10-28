@@ -133,6 +133,7 @@ async function stubProvider(
     policy: { operatorRead: false },
     incarnation: 0,
     assertLive(_epoch: number) {},
+    async ensure() {},
     async open(principal: any, _options: { provision: boolean }): Promise<unknown> {
       const access = { ...principal(), assertCurrent: () => principal() };
       return { kind: "ready", runtime, access };
@@ -146,7 +147,8 @@ async function stubProvider(
       }
     },
   };
-  const { provider } = await createKnowledgeMemoryRuntime(stores as Stores).open({
+  // SAFETY: the provider runtime calls only the members stubbed above.
+  const { provider } = await createKnowledgeMemoryRuntime(stores as unknown as Stores).open({
     cfg: {},
     agentId: "main",
     context,

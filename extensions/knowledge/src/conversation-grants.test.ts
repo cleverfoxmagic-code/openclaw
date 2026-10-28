@@ -187,6 +187,25 @@ it("grant changes need operator admin and the current revision, and persist in t
   expect(
     (await f.service.stores_snapshot({}, f.admin)).grants.entries.map((e) => e.sessionKey),
   ).toStrictEqual([GROUP]);
+  // Losing access while the registry write is queued undoes the committed grant.
+  let checks = 0;
+  const disconnecting = operatorContext(f.api, ["operator.admin"], () => {
+    if (++checks > 1) {
+      throw new Error("connection closed");
+    }
+  });
+  const late = await f.service.stores_grant(
+    {
+      expectedRevision: (await f.service.stores_snapshot({}, f.admin)).grants.revision,
+      sessionKey: "agent:main:discord:channel:888",
+      access: "read",
+    },
+    disconnecting,
+  );
+  expect(late.outcome).toBe("forbidden");
+  expect(
+    (await f.service.stores_snapshot({}, f.admin)).grants.entries.map((e) => e.sessionKey),
+  ).toStrictEqual([GROUP]);
   // Grants are Knowledge state, not configuration, and survive a restart.
   expect(f.host.config.plugins.entries.knowledge.config).not.toHaveProperty("conversationGrants");
   await Promise.all(f.services.map((s: any) => s.stop()));
@@ -194,6 +213,33 @@ it("grant changes need operator admin and the current revision, and persist in t
   expect((await restarted.records({}, f.chat(GROUP))).records.map((r) => r.title)).toStrictEqual([
     "Owner plan",
   ]);
+});
+
+it("a memory-provider lease opened first after a restart sees the persisted grant", async () => {
+  const f = await fixture();
+  await f.save(f.owner, "Owner plan");
+  await f.grant(GROUP, "read");
+  await Promise.all(f.services.map((s: any) => s.stop()));
+  createKnowledgeService(f.api);
+  const lease = await f.capability().providerRuntime.open({
+    cfg: {},
+    agentId: "main",
+    context: {
+      authority: {
+        kind: "session",
+        sessionKey: GROUP,
+        sandboxed: false,
+        audience: {
+          kind: "conversation",
+          agentId: "main",
+          sessionKey: GROUP,
+          sessionId: randomUUID(),
+        },
+      },
+      assertCurrent() {},
+    },
+  });
+  expect((await lease.provider.search({ query: "Owner plan" })).hits.length).toBeGreaterThan(0);
 });
 
 it("conversations granted saves can approve automatic recall; read-only and ungranted ones cannot", async () => {

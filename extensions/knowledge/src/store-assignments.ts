@@ -529,6 +529,25 @@ export function createStoreOperations(stores: Stores) {
     if (stores.grants().revision !== grantsRevision(next)) {
       return conflict();
     }
+    // The registry worker can't consult caller authority, so recheck once the
+    // write has committed and undo it if the operator lost access meanwhile. A
+    // crash between the two leaves the grant (accepted: rare, visible, revocable).
+    const stillAllowed = () => {
+      try {
+        assertCallerCurrent(context);
+      } catch {
+        return false;
+      }
+      return !client?.allowsAgent || client.allowsAgent(agent);
+    };
+    if (!stillAllowed()) {
+      const previous = current.section[input.sessionKey] ?? "none";
+      await stores.registry.call("grant", input.sessionKey, previous, grantsRevision(next));
+      return {
+        outcome: "forbidden",
+        message: `Your operator access to agent "${agent}" ended while saving. Nothing was changed.`,
+      };
+    }
     return {
       outcome: "applied",
       message: input.access === "none" ? "Access removed." : "Access saved.",

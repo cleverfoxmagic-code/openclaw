@@ -42,10 +42,14 @@ export function createKnowledgeMemoryRuntime(stores: Stores): MemoryProviderRunt
   return {
     async open({ agentId, context, purpose }) {
       // A lease keeps the principal and service incarnation it was opened with.
-      const incarnation = stores.incarnation,
-        pinned = pinPrincipal(
-          memoryPrincipal(context, agentId, stores.policy.operatorRead, purpose, stores.grantFor),
-        );
+      // Grants load with the registry, so a cold lease waits for it before
+      // pinning; otherwise a granted conversation would pin its own partition.
+      const incarnation = stores.incarnation;
+      await stores.ensure();
+      stores.assertLive(incarnation);
+      const pinned = pinPrincipal(
+        memoryPrincipal(context, agentId, stores.policy.operatorRead, purpose, stores.grantFor),
+      );
       // Host readiness leases may validate storage but never release its content.
       const assertContentAccess = () => {
         if (pinned.principal.healthOnly) {
